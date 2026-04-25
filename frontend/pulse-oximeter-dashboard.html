@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pulse Oximeter Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #070710;
+        --mint: #00f5a0;
+        --amber: #f5a623;
+        --critical: #ff4d4f;
+        --dim: rgba(220, 255, 244, 0.72);
+        --grid: rgba(0, 245, 160, 0.08);
+        --panel: rgba(8, 14, 24, 0.88);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        color: #eafff6;
+        font-family: "Space Mono", monospace;
+        background:
+          radial-gradient(circle at 10% -10%, rgba(0, 245, 160, 0.11), transparent 42%),
+          radial-gradient(circle at 95% 120%, rgba(245, 166, 35, 0.13), transparent 44%),
+          var(--bg);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.26;
+        background-image:
+          linear-gradient(to right, var(--grid) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+        background-size: 46px 46px;
+      }
+
+      #particles {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .dashboard {
+        position: relative;
+        z-index: 2;
+        width: min(94vw, 1080px);
+        min-height: min(88vh, 740px);
+        border: 1px solid rgba(0, 245, 160, 0.24);
+        border-radius: 20px;
+        padding: clamp(16px, 3vw, 34px);
+        background: linear-gradient(175deg, rgba(12, 18, 34, 0.9), var(--panel));
+        box-shadow:
+          0 0 60px rgba(0, 245, 160, 0.09),
+          inset 0 0 40px rgba(0, 245, 160, 0.06);
+        display: flex;
+        flex-direction: column;
+        gap: clamp(12px, 2.4vh, 26px);
+      }
+
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .title {
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--dim);
+        font-size: clamp(0.9rem, 1.7vw, 1.15rem);
+      }
+
+      .status-badge {
+        min-width: 132px;
+        text-align: center;
+        border-radius: 999px;
+        border: 1px solid;
+        padding: 8px 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        font-size: 0.78rem;
+        transition:
+          color 220ms ease,
+          border-color 220ms ease,
+          background-color 220ms ease,
+          box-shadow 220ms ease;
+      }
+
+      .status-badge.normal {
+        color: var(--mint);
+        border-color: rgba(0, 245, 160, 0.6);
+        background: rgba(0, 245, 160, 0.1);
+        box-shadow: 0 0 14px rgba(0, 245, 160, 0.36);
+      }
+
+      .status-badge.low {
+        color: var(--amber);
+        border-color: rgba(245, 166, 35, 0.63);
+        background: rgba(245, 166, 35, 0.12);
+        box-shadow: 0 0 14px rgba(245, 166, 35, 0.3);
+      }
+
+      .status-badge.critical {
+        color: var(--critical);
+        border-color: rgba(255, 77, 79, 0.72);
+        background: rgba(255, 77, 79, 0.12);
+        box-shadow: 0 0 14px rgba(255, 77, 79, 0.32);
+      }
+
+      .metrics-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: end;
+        gap: 20px;
+      }
+
+      .metric-label {
+        color: var(--dim);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        font-size: clamp(0.78rem, 1.5vw, 0.92rem);
+        margin-bottom: 8px;
+      }
+
+      .spo2-line {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      .spo2-value {
+        font-family: "Orbitron", monospace;
+        font-size: clamp(100px, 15vw, 178px);
+        line-height: 0.9;
+        color: var(--mint);
+        text-shadow:
+          0 0 10px rgba(0, 245, 160, 0.75),
+          0 0 24px rgba(0, 245, 160, 0.56),
+          0 0 50px rgba(0, 245, 160, 0.36);
+      }
+
+      .spo2-unit {
+        font-family: "Orbitron", monospace;
+        font-size: clamp(2rem, 5vw, 3.1rem);
+        color: var(--mint);
+        text-shadow: 0 0 12px rgba(0, 245, 160, 0.58);
+      }
+
+      .bpm-wrap {
+        text-align: right;
+      }
+
+      .bpm-value {
+        font-family: "Orbitron", monospace;
+        font-size: clamp(62px, 9.2vw, 104px);
+        line-height: 1;
+        color: var(--amber);
+        text-shadow:
+          0 0 10px rgba(245, 166, 35, 0.68),
+          0 0 26px rgba(245, 166, 35, 0.44);
+      }
+
+      .wave-card {
+        border: 1px solid rgba(0, 245, 160, 0.28);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(7, 12, 25, 0.8), rgba(3, 7, 16, 0.68));
+        padding: 10px;
+        box-shadow: inset 0 0 25px rgba(0, 245, 160, 0.06);
+      }
+
+      #ecgCanvas {
+        display: block;
+        width: 100%;
+        height: clamp(170px, 28vh, 290px);
+      }
+
+      .bottom-bar {
+        border-top: 1px solid rgba(0, 245, 160, 0.22);
+        padding-top: 14px;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .reading {
+        color: var(--dim);
+        letter-spacing: 0.05em;
+        font-size: clamp(0.78rem, 1.55vw, 0.96rem);
+      }
+
+      .reading.right {
+        text-align: right;
+      }
+
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--mint);
+        text-shadow: 0 0 8px rgba(0, 245, 160, 0.56);
+      }
+
+      .live-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--mint);
+        box-shadow:
+          0 0 0 2px rgba(0, 245, 160, 0.14),
+          0 0 14px rgba(0, 245, 160, 0.8);
+        transform-origin: center;
+        animation: pulseDot 1.35s infinite ease-in-out;
+      }
+
+      @keyframes pulseDot {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.82;
+        }
+        50% {
+          transform: scale(1.7);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 780px) {
+        .dashboard {
+          min-height: min(90vh, 760px);
+        }
+
+        .metrics-row {
+          grid-template-columns: 1fr;
+        }
+
+        .bpm-wrap {
+          margin-top: 8px;
+        }
+
+        .bottom-bar {
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="particles" aria-hidden="true"></canvas>
+
+    <main class="dashboard">
+      <div class="header-row">
+        <div class="title">Pulse Oximeter</div>
+        <div id="statusBadge" class="status-badge normal">NORMAL</div>
+      </div>
+
+      <section class="metrics-row">
+        <div>
+          <div class="metric-label">SpO2</div>
+          <div class="spo2-line">
+            <div id="spo2Value" class="spo2-value">70.0</div>
+            <div class="spo2-unit">%</div>
+          </div>
+        </div>
+
+        <div class="bpm-wrap">
+          <div class="metric-label">BPM</div>
+          <div id="bpmValue" class="bpm-value">72</div>
+        </div>
+      </section>
+
+      <section class="wave-card">
+        <canvas id="ecgCanvas" aria-label="ECG waveform"></canvas>
+      </section>
+
+      <div class="bottom-bar">
+        <div id="minReading" class="reading">Min 97.4%</div>
+        <div class="live">
+          <span class="live-dot"></span>
+          <span>LIVE</span>
+        </div>
+        <div id="maxReading" class="reading right">Max 97.4%</div>
+      </div>
+    </main>
+
+    <script>
+      const spo2El = document.getElementById("spo2Value");
+      const bpmEl = document.getElementById("bpmValue");
+      const minEl = document.getElementById("minReading");
+      const maxEl = document.getElementById("maxReading");
+      const statusBadgeEl = document.getElementById("statusBadge");
+
+      const ecgCanvas = document.getElementById("ecgCanvas");
+      const ecgCtx = ecgCanvas.getContext("2d");
+
+      const particlesCanvas = document.getElementById("particles");
+      const particlesCtx = particlesCanvas.getContext("2d");
+
+      const SPO2_MIN = 88;
+      const SPO2_MAX = 100;
+      const BPM_MIN = 55;
+      const BPM_MAX = 100;
+
+      let currentSpO2 = 97.4;
+      let currentBpm = 72;
+      let displaySpO2 = 70;
+      let minSpO2 = currentSpO2;
+      let maxSpO2 = currentSpO2;
+
+      let particles = [];
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function formatSpO2(value) {
+        return value.toFixed(1);
+      }
+
+      function updateStatusBadge() {
+        statusBadgeEl.classList.remove("normal", "low", "critical");
+
+        if (currentSpO2 >= 95) {
+          statusBadgeEl.classList.add("normal");
+          statusBadgeEl.textContent = "NORMAL";
+          return;
+        }
+
+        if (currentSpO2 >= 90) {
+          statusBadgeEl.classList.add("low");
+          statusBadgeEl.textContent = "LOW";
+          return;
+        }
+
+        statusBadgeEl.classList.add("critical");
+        statusBadgeEl.textContent = "CRITICAL";
+      }
+
+      function renderStats() {
+        spo2El.textContent = formatSpO2(displaySpO2);
+        bpmEl.textContent = Math.round(currentBpm).toString();
+        minEl.textContent = `Min ${formatSpO2(minSpO2)}%`;
+        maxEl.textContent = `Max ${formatSpO2(maxSpO2)}%`;
+        updateStatusBadge();
+      }
+
+      function animateSpO2(targetValue, durationMs = 1200) {
+        const startValue = displaySpO2;
+        const startedAt = performance.now();
+
+        function frame(now) {
+          const progress = Math.min(1, (now - startedAt) / durationMs);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          displaySpO2 = startValue + (targetValue - startValue) * eased;
+          renderStats();
+
+          if (progress < 1) {
+            requestAnimationFrame(frame);
+          }
+        }
+
+        requestAnimationFrame(frame);
+      }
+
+      function simulateDataTick() {
+        const spo2Drift = Math.random() * 1.2 - 0.6;
+        const bpmDrift = Math.random() * 2 - 1;
+
+        currentSpO2 = clamp(currentSpO2 + spo2Drift, SPO2_MIN, SPO2_MAX);
+        currentBpm = clamp(currentBpm + bpmDrift, BPM_MIN, BPM_MAX);
+
+        minSpO2 = Math.min(minSpO2, currentSpO2);
+        maxSpO2 = Math.max(maxSpO2, currentSpO2);
+
+        renderStats();
+        animateSpO2(currentSpO2, 900);
+      }
+
+      function resizeEcgCanvas() {
+        const ratio = window.devicePixelRatio || 1;
+        const rect = ecgCanvas.getBoundingClientRect();
+        ecgCanvas.width = Math.max(1, Math.floor(rect.width * ratio));
+        ecgCanvas.height = Math.max(1, Math.floor(rect.height * ratio));
+        ecgCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
+
+      function ecgSignal(x, t) {
+        const beatWidth = 170;
+        const pulsePosition = (x + t * 170) % beatWidth;
+
+        let spike = 0;
+        if (pulsePosition > 80 && pulsePosition < 90) {
+          spike = -Math.sin(((pulsePosition - 80) / 10) * Math.PI) * 54;
+        } else if (pulsePosition >= 90 && pulsePosition < 104) {
+          spike = Math.sin(((pulsePosition - 90) / 14) * Math.PI) * 28;
+        }
+
+        const breathing = Math.sin(x * 0.03 + t * 2.4) * 5;
+        return breathing + spike;
+      }
+
+      function drawEcg(timeMs) {
+        const t = timeMs * 0.001;
+        const width = ecgCanvas.clientWidth;
+        const height = ecgCanvas.clientHeight;
+        const centerY = height * 0.55;
+
+        ecgCtx.clearRect(0, 0, width, height);
+
+        ecgCtx.strokeStyle = "rgba(0, 245, 160, 0.14)";
+        ecgCtx.lineWidth = 1;
+        ecgCtx.beginPath();
+        ecgCtx.moveTo(0, centerY);
+        ecgCtx.lineTo(width, centerY);
+        ecgCtx.stroke();
+
+        ecgCtx.beginPath();
+        for (let x = 0; x <= width; x += 2) {
+          const y = centerY + ecgSignal(x, t);
+          if (x === 0) {
+            ecgCtx.moveTo(x, y);
+          } else {
+            ecgCtx.lineTo(x, y);
+          }
+        }
+
+        ecgCtx.strokeStyle = "#00f5a0";
+        ecgCtx.lineWidth = 2.2;
+        ecgCtx.shadowColor = "rgba(0, 245, 160, 0.9)";
+        ecgCtx.shadowBlur = 18;
+        ecgCtx.stroke();
+        ecgCtx.shadowBlur = 0;
+
+        requestAnimationFrame(drawEcg);
+      }
+
+      function resizeParticlesCanvas() {
+        const ratio = window.devicePixelRatio || 1;
+        particlesCanvas.width = Math.max(1, Math.floor(window.innerWidth * ratio));
+        particlesCanvas.height = Math.max(1, Math.floor(window.innerHeight * ratio));
+        particlesCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
+
+      function spawnParticles() {
+        const count = Math.max(24, Math.floor((window.innerWidth * window.innerHeight) / 26000));
+        particles = Array.from({ length: count }, () => {
+          const mintTint = Math.random() > 0.15;
+          return {
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            r: Math.random() * 1.9 + 0.6,
+            vx: (Math.random() - 0.5) * 0.07,
+            vy: (Math.random() - 0.5) * 0.07,
+            a: Math.random() * 0.3 + 0.08,
+            color: mintTint ? "0,245,160" : "245,166,35"
+          };
+        });
+      }
+
+      function drawParticles() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        particlesCtx.clearRect(0, 0, width, height);
+
+        for (const particle of particles) {
+          particle.x += particle.vx;
+          particle.y += particle.vy;
+
+          if (particle.x < -8) particle.x = width + 8;
+          if (particle.x > width + 8) particle.x = -8;
+          if (particle.y < -8) particle.y = height + 8;
+          if (particle.y > height + 8) particle.y = -8;
+
+          particlesCtx.beginPath();
+          particlesCtx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+          particlesCtx.fillStyle = `rgba(${particle.color}, ${particle.a})`;
+          particlesCtx.shadowColor = `rgba(${particle.color}, 0.45)`;
+          particlesCtx.shadowBlur = 8;
+          particlesCtx.fill();
+        }
+
+        particlesCtx.shadowBlur = 0;
+        requestAnimationFrame(drawParticles);
+      }
+
+      function handleResize() {
+        resizeEcgCanvas();
+        resizeParticlesCanvas();
+        spawnParticles();
+      }
+
+      window.addEventListener("resize", handleResize);
+
+      handleResize();
+      renderStats();
+      animateSpO2(currentSpO2, 1600);
+
+      requestAnimationFrame(drawEcg);
+      requestAnimationFrame(drawParticles);
+
+      setInterval(simulateDataTick, 2000);
+    </script>
+  </body>
+</html>

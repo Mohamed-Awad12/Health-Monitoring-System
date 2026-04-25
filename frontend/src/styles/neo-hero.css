@@ -1,0 +1,98 @@
+.neo-hero-container {
+  text-align: center;
+  padding: 6rem 1rem;
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--neo-bg-soft);
+  border: 1px solid var(--neo-line);
+}
+
+.neo-hero-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+      circle at 15% 25%,
+      rgba(86, 193, 255, 0.15),
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 85% 75%,
+      rgba(36, 213, 167, 0.12),
+      transparent 40%
+    );
+  z-index: 0;
+}
+
+.neo-hero-content {
+  position: relative;
+  z-index: 1;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.neo-hero-title {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 800;
+  color: var(--neo-title);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.neo-hero-subtitle {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--neo-muted);
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.6;
+}
+
+.neo-hero-cta-group {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.neo-hero-cta {
+  border: none;
+  border-radius: 12px;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.neo-hero-cta.primary {
+  background: linear-gradient(
+    135deg,
+    var(--neo-primary),
+    var(--neo-accent-2)
+  );
+  color: white;
+  box-shadow: 0 8px 20px rgba(47, 164, 255, 0.3);
+}
+
+.neo-hero-cta.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(47, 164, 255, 0.4);
+}
+
+.neo-hero-cta.secondary {
+  background: var(--neo-panel);
+  color: var(--neo-text);
+  border: 1px solid var(--neo-line);
+}
+
+.neo-hero-cta.secondary:hover {
+  background: var(--neo-panel-strong);
+  border-color: var(--neo-line-strong);
+}
