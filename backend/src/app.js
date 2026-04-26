@@ -16,8 +16,14 @@ const patientRoutes = require("./routes/patientRoutes");
 
 const app = express();
 
-if (env.NODE_ENV === "production") {
-  // Railway terminates TLS upstream and forwards proxy headers.
+const isRailwayRuntime = Boolean(
+  process.env.RAILWAY_PUBLIC_DOMAIN ||
+  process.env.RAILWAY_SERVICE_ID ||
+  process.env.RAILWAY_ENVIRONMENT
+);
+
+if (env.NODE_ENV === "production" || isRailwayRuntime) {
+  // Reverse proxies (Railway, etc.) forward the original client IP in headers.
   app.set("trust proxy", 1);
 }
 
