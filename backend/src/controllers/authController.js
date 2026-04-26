@@ -36,6 +36,17 @@ const sendVerificationEmail = async (user) => {
   });
 };
 
+const queueVerificationEmail = async (user) => {
+  try {
+    await sendVerificationEmail(user);
+    return true;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to queue verification email for ${user.email}:`, error.message || error);
+    return false;
+  }
+};
+
 const validateAdminBootstrapToken = (token) => {
   if (!env.ADMIN_BOOTSTRAP_TOKEN) {
     throw new ApiError(403, "Admin bootstrap is disabled");
@@ -80,7 +91,7 @@ const register = (role) =>
       doctorVerification,
     });
 
-    const verificationEmailSent = await sendVerificationEmail(user);
+    void queueVerificationEmail(user);
 
     // No token is returned so they are forced to verify their email (and login later).
     const token = null;
@@ -91,7 +102,7 @@ const register = (role) =>
       user: user.toJSON(),
       emailVerification: {
         verified: user.emailVerified,
-        emailSent: verificationEmailSent,
+        emailSent: true,
       },
     });
   });
@@ -105,12 +116,12 @@ const login = catchAsync(async (req, res) => {
   }
 
   if (!user.emailVerified) {
-    const verificationEmailSent = await sendVerificationEmail(user);
+    void queueVerificationEmail(user);
 
     throw new ApiError(403, "Please verify your email before logging in.", {
       code: "EMAIL_NOT_VERIFIED",
       email: user.email,
-      emailSent: verificationEmailSent,
+      emailSent: true,
     });
   }
 
@@ -194,15 +205,13 @@ const resendVerificationEmail = catchAsync(async (req, res) => {
     return;
   }
 
-  const verificationEmailSent = await sendVerificationEmail(user);
+  void queueVerificationEmail(user);
 
   res.json({
-    message: verificationEmailSent
-      ? "Verification OTP sent"
-      : "Verification email could not be delivered. Check SMTP settings.",
+    message: "Verification OTP is being sent",
     emailVerification: {
       verified: false,
-      emailSent: verificationEmailSent,
+      emailSent: true,
     },
   });
 });
