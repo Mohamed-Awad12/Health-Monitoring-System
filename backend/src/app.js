@@ -16,6 +16,11 @@ const patientRoutes = require("./routes/patientRoutes");
 
 const app = express();
 
+if (env.NODE_ENV === "production") {
+  // Railway terminates TLS upstream and forwards proxy headers.
+  app.set("trust proxy", 1);
+}
+
 const developmentOriginPattern =
   /^https?:\/\/((localhost|127\.0\.0\.1)|((10|192\.168|172\.(1[6-9]|2\d|3[0-1]))(\.\d{1,3}){2})|([a-z0-9-]+\.local))(\:\d+)?$/i;
 

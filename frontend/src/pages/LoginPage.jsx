@@ -43,7 +43,7 @@ export default function LoginPage() {
     event.preventDefault();
 
     const payload = {
-      email: formState.email.trim(),
+      email: formState.email.trim().toLowerCase(),
       password: formState.password,
     };
 

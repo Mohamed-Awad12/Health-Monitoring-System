@@ -97,9 +97,10 @@ const register = (role) =>
   });
 
 const login = catchAsync(async (req, res) => {
-  const user = await User.findOne({ email: req.body.email }).select("+password");
+  const normalizedEmail = req.body.email?.trim().toLowerCase();
+  const user = await User.findOne({ email: normalizedEmail }).select("+password");
 
-  if (!user || !(await user.comparePassword(req.body.password))) {
+  if (!user || !(await user.comparePassword(String(req.body.password || "")))) {
     throw new ApiError(401, "Invalid email or password");
   }
 

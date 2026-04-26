@@ -43,8 +43,19 @@ const smtpSecureEnabled = () => parseBoolean(env.SMTP_SECURE, false);
 const isSmtpConfigured = () =>
   Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
 
-const getFromAddress = () =>
-  env.EMAIL_FROM || env.SMTP_USER || "no-reply@pulse-oximeter.local";
+const getFromAddress = () => {
+  const configuredFrom = String(env.EMAIL_FROM || "").trim();
+
+  if (!configuredFrom) {
+    return env.SMTP_USER || "no-reply@pulse-oximeter.local";
+  }
+
+  if (!configuredFrom.includes("@") && env.SMTP_USER) {
+    return `"${configuredFrom}" <${env.SMTP_USER}>`;
+  }
+
+  return configuredFrom;
+};
 
 const getTransporter = async () => {
   if (!isSmtpConfigured()) {
