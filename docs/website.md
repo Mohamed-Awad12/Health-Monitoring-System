@@ -1,5 +1,9 @@
 # Website Documentation
 
+Related document:
+
+- [Mobile UI Guide](./mobile-ui-guide.md)
+
 ## Overview
 
 This project ships a role-based web application for remote pulse oximeter monitoring.
