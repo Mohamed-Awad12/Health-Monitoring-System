@@ -3,6 +3,10 @@ const { z } = require("zod");
 
 dotenv.config();
 
+const webhookUrlSchema = z.string().url().refine((value) => value.startsWith("https://"), {
+  message: "EMAIL_WEBHOOK_URL must use https://",
+});
+
 const envSchema = z
   .object({
     PORT: z.coerce.number().int().positive().default(5000),
@@ -21,11 +25,10 @@ const envSchema = z
     EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(60),
     PASSWORD_RESET_OTP_TTL_MINUTES: z.coerce.number().int().positive().default(15),
     EMAIL_VERIFICATION_URL: z.string().optional(),
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.coerce.number().int().positive().default(587),
-    SMTP_SECURE: z.string().default("false"),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASS: z.string().optional(),
+    EMAIL_WEBHOOK_URL: webhookUrlSchema.optional().or(z.literal("")),
+    EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+    EMAIL_WEBHOOK_AUTH_HEADER: z.string().optional().or(z.literal("")),
+    EMAIL_WEBHOOK_AUTH_VALUE: z.string().optional().or(z.literal("")),
     EMAIL_FROM: z.string().optional(),
     ADMIN_BOOTSTRAP_TOKEN: z
       .string()

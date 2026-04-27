@@ -173,7 +173,7 @@ If `AI_HEALTH_ASSISTANT_API_KEY` is not configured, the assistant falls back to 
 - Email verification uses a 6-digit OTP.
 - Password reset uses a 6-digit OTP.
 - Doctor approval is separate from email verification.
-- If SMTP is not configured, the backend simulates email delivery and prints the message content to the backend logs.
+- Email delivery uses an HTTPS webhook. If the webhook is not configured, the backend simulates delivery and prints the message content to the backend logs.
 
 `EMAIL_VERIFICATION_URL` exists in the backend env schema, but the current implementation sends OTP emails rather than a clickable verification link.
 

@@ -1,9 +1,6 @@
-const nodemailer = require("nodemailer");
 const env = require("../config/env");
 
-let transporter;
-let transporterReady = false;
-let warnedAboutMissingSmtp = false;
+let warnedAboutMissingWebhook = false;
 let warnedAboutDisabledEmails = false;
 
 const ALERT_TYPE_LABELS = {
@@ -38,57 +35,73 @@ const parseBoolean = (value, fallback) => {
 
 const emailsEnabled = () => parseBoolean(env.EMAIL_ALERTS_ENABLED, true);
 
-const smtpSecureEnabled = () => parseBoolean(env.SMTP_SECURE, false);
-
-const isSmtpConfigured = () =>
-  Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
-
 const getFromAddress = () => {
   const configuredFrom = String(env.EMAIL_FROM || "").trim();
 
   if (!configuredFrom) {
-    return env.SMTP_USER || "no-reply@pulse-oximeter.local";
-  }
-
-  if (!configuredFrom.includes("@") && env.SMTP_USER) {
-    return `"${configuredFrom}" <${env.SMTP_USER}>`;
+    return "no-reply@pulse-oximeter.local";
   }
 
   return configuredFrom;
 };
 
-const getTransporter = async () => {
-  if (!isSmtpConfigured()) {
-    if (!warnedAboutMissingSmtp) {
+const getWebhookHeaders = () => {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  const authHeader = String(env.EMAIL_WEBHOOK_AUTH_HEADER || "").trim();
+  const authValue = String(env.EMAIL_WEBHOOK_AUTH_VALUE || "").trim();
+
+  if (authHeader && authValue) {
+    headers[authHeader] = authValue;
+  }
+
+  return headers;
+};
+
+const sendEmailViaWebhook = async ({ to, subject, text }) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    env.EMAIL_WEBHOOK_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(env.EMAIL_WEBHOOK_URL, {
+      method: "POST",
+      headers: getWebhookHeaders(),
+      body: JSON.stringify({
+        from: getFromAddress(),
+        to,
+        subject,
+        text,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const responseBody = (await response.text()).slice(0, 500);
+
       // eslint-disable-next-line no-console
-      console.warn("SMTP is not configured; email delivery is simulated.");
-      warnedAboutMissingSmtp = true;
+      console.error(`Failed to send email to ${to}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseBody || undefined,
+      });
+      return false;
     }
 
-    return null;
-  }
-
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: smtpSecureEnabled(),
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-      },
-    });
-  }
-
-  if (!transporterReady) {
-    await transporter.verify();
-    transporterReady = true;
-
+    return true;
+  } catch (error) {
     // eslint-disable-next-line no-console
-    console.log("SMTP connection verified.");
+    console.error(`Failed to send email to ${to}:`, {
+      name: error?.name,
+      message: error?.message || String(error),
+    });
+    return false;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return transporter;
 };
 
 const sendEmail = async ({ to, subject, text }) => {
@@ -106,28 +119,19 @@ const sendEmail = async ({ to, subject, text }) => {
     return false;
   }
 
-  try {
-    const transporterInstance = await getTransporter();
-
-    if (!transporterInstance) {
-      // Simulate sending email
-      console.warn("   => SIMULATED EMAIL CONTENT:\n   To: " + to + "\n   Subject: " + subject + "\n   Body:\n" + text);
-      return true;
+  if (!env.EMAIL_WEBHOOK_URL) {
+    if (!warnedAboutMissingWebhook) {
+      // eslint-disable-next-line no-console
+      console.warn("Email webhook is not configured; email delivery is simulated.");
+      warnedAboutMissingWebhook = true;
     }
 
-    await transporterInstance.sendMail({
-      from: getFromAddress(),
-      to,
-      subject,
-      text,
-    });
-
-    return true;
-  } catch (error) {
     // eslint-disable-next-line no-console
-    console.error(`Failed to send email to ${to}:`, error.message || error);
-    return false;
+    console.warn("   => SIMULATED EMAIL CONTENT:\n   To: " + to + "\n   Subject: " + subject + "\n   Body:\n" + text);
+    return true;
   }
+
+  return sendEmailViaWebhook({ to, subject, text });
 };
 
 const sendEmailVerificationMessage = async ({ user, otp }) => {
