@@ -29,7 +29,6 @@ const envSchema = z
     EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
     EMAIL_WEBHOOK_AUTH_HEADER: z.string().optional().or(z.literal("")),
     EMAIL_WEBHOOK_AUTH_VALUE: z.string().optional().or(z.literal("")),
-    EMAIL_FROM: z.string().optional(),
     ADMIN_BOOTSTRAP_TOKEN: z
       .string()
       .trim()

@@ -35,16 +35,6 @@ const parseBoolean = (value, fallback) => {
 
 const emailsEnabled = () => parseBoolean(env.EMAIL_ALERTS_ENABLED, true);
 
-const getFromAddress = () => {
-  const configuredFrom = String(env.EMAIL_FROM || "").trim();
-
-  if (!configuredFrom) {
-    return "no-reply@pulse-oximeter.local";
-  }
-
-  return configuredFrom;
-};
-
 const getWebhookHeaders = () => {
   const headers = {
     "Content-Type": "application/json",
@@ -59,52 +49,7 @@ const getWebhookHeaders = () => {
   return headers;
 };
 
-const sendEmailViaWebhook = async ({ to, subject, text }) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    env.EMAIL_WEBHOOK_TIMEOUT_MS
-  );
-
-  try {
-    const response = await fetch(env.EMAIL_WEBHOOK_URL, {
-      method: "POST",
-      headers: getWebhookHeaders(),
-      body: JSON.stringify({
-        from: getFromAddress(),
-        to,
-        subject,
-        text,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const responseBody = (await response.text()).slice(0, 500);
-
-      // eslint-disable-next-line no-console
-      console.error(`Failed to send email to ${to}:`, {
-        status: response.status,
-        statusText: response.statusText,
-        body: responseBody || undefined,
-      });
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(`Failed to send email to ${to}:`, {
-      name: error?.name,
-      message: error?.message || String(error),
-    });
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
-const sendEmail = async ({ to, subject, text }) => {
+const isEmailDeliveryAvailable = () => {
   if (!emailsEnabled()) {
     if (!warnedAboutDisabledEmails) {
       // eslint-disable-next-line no-console
@@ -115,23 +60,89 @@ const sendEmail = async ({ to, subject, text }) => {
     return false;
   }
 
-  if (!to) {
-    return false;
-  }
-
   if (!env.EMAIL_WEBHOOK_URL) {
     if (!warnedAboutMissingWebhook) {
       // eslint-disable-next-line no-console
-      console.warn("Email webhook is not configured; email delivery is simulated.");
+      console.warn("EMAIL_WEBHOOK_URL is not configured; email delivery is skipped.");
       warnedAboutMissingWebhook = true;
     }
 
-    // eslint-disable-next-line no-console
-    console.warn("   => SIMULATED EMAIL CONTENT:\n   To: " + to + "\n   Subject: " + subject + "\n   Body:\n" + text);
-    return true;
+    return false;
   }
 
-  return sendEmailViaWebhook({ to, subject, text });
+  return true;
+};
+
+const postToEmailWebhook = async ({ email, payload, logLabel }) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    env.EMAIL_WEBHOOK_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(env.EMAIL_WEBHOOK_URL, {
+      method: "POST",
+      headers: getWebhookHeaders(),
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const responseBody = (await response.text()).slice(0, 500);
+
+      // eslint-disable-next-line no-console
+      console.error(`Failed to send email webhook for ${logLabel || email}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseBody || undefined,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Failed to send email webhook for ${logLabel || email}:`, {
+      name: error?.name,
+      message: error?.message || String(error),
+    });
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const sendOtpEmail = async ({ email, otp }) => {
+  if (!email || !otp || !isEmailDeliveryAvailable()) {
+    return false;
+  }
+
+  return postToEmailWebhook({
+    email,
+    payload: {
+      email,
+      otp,
+    },
+    logLabel: `otp:${email}`,
+  });
+};
+
+const sendAlertEmail = async ({ email, subject, text }) => {
+  if (!email || !subject || !text || !isEmailDeliveryAvailable()) {
+    return false;
+  }
+
+  return postToEmailWebhook({
+    email,
+    payload: {
+      email,
+      subject,
+      text,
+      type: "alert",
+    },
+    logLabel: `alert:${email}`,
+  });
 };
 
 const sendEmailVerificationMessage = async ({ user, otp }) => {
@@ -139,21 +150,9 @@ const sendEmailVerificationMessage = async ({ user, otp }) => {
     return false;
   }
 
-  const subject = "Your Pulse Oximeter verification OTP";
-  const text = [
-    `Hello ${user.name || "there"},`,
-    "",
-    "Use this one-time password (OTP) to verify your email address:",
-    `OTP: ${otp}`,
-    `This OTP expires in ${env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES} minutes.`,
-    "",
-    "If you did not create this account, you can ignore this message.",
-  ].join("\n");
-
-  return sendEmail({
-    to: user.email,
-    subject,
-    text,
+  return sendOtpEmail({
+    email: user.email,
+    otp,
   });
 };
 
@@ -162,22 +161,9 @@ const sendPasswordResetEmail = async ({ user, otp }) => {
     return false;
   }
 
-  const subject = "Your Pulse Oximeter password reset OTP";
-  const text = [
-    `Hello ${user.name || "there"},`,
-    "",
-    "We received a request to reset your password.",
-    "Use this one-time password (OTP) to reset your password:",
-    `OTP: ${otp}`,
-    `This OTP expires in ${env.PASSWORD_RESET_OTP_TTL_MINUTES} minutes.`,
-    "",
-    "If you did not request this, you can ignore this message.",
-  ].join("\n");
-
-  return sendEmail({
-    to: user.email,
-    subject,
-    text,
+  return sendOtpEmail({
+    email: user.email,
+    otp,
   });
 };
 
@@ -247,8 +233,8 @@ const sendAlertEmailsToCareTeam = async ({ alert, reading, patient, doctors = []
         "Please review the dashboard for full details.",
       ].join("\n");
 
-      return sendEmail({
-        to: recipient.email,
+      return sendAlertEmail({
+        email: recipient.email,
         subject,
         text,
       });

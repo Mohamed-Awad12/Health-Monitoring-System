@@ -99,16 +99,16 @@ See [backend/.env.example](/mnt/52FE347AFE345885/Pulse%20Oximeter/backend/.env.e
 
 Email alerting setup:
 
-- Set `EMAIL_WEBHOOK_URL` to an HTTPS endpoint that accepts email webhook POSTs.
+- The backend sends email through a webhook only. Set `EMAIL_WEBHOOK_URL` to your n8n production webhook.
 - Optional `EMAIL_WEBHOOK_AUTH_HEADER` and `EMAIL_WEBHOOK_AUTH_VALUE` add a custom auth header for the webhook request.
 - Optional `EMAIL_WEBHOOK_TIMEOUT_MS` bounds how long the backend waits for the webhook before failing the request.
-- Optional `EMAIL_FROM` controls sender identity.
 - `EMAIL_ALERTS_ENABLED=true` enables verification and medical alert emails.
 - Email verification and password reset currently use emailed OTP codes.
 - `PASSWORD_RESET_OTP_TTL_MINUTES` controls password reset OTP expiry.
 - `EMAIL_VERIFICATION_URL` exists in config but is not used by the current OTP-based email flow.
 - Alerts are sent only to verified emails (patient and active assigned doctors).
-- The webhook payload is JSON shaped like `{ from, to, subject, text }`.
+- Verification and password-reset emails send `{ email, otp }` to the webhook.
+- Alert emails send `{ email, subject, text, type: "alert" }` to the webhook.
 - For n8n, use the published `/webhook/` URL in production. The `/webhook-test/` URL only works while n8n is listening for a test event.
 
 Admin bootstrap:
