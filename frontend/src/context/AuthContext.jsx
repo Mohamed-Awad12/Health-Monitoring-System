@@ -87,7 +87,7 @@ export function AuthProvider({ children }) {
       setUser(null);
     }
 
-    return data.user;
+    return data;
   };
 
   const logout = () => {

@@ -27,13 +27,18 @@ export default function VerifyEmailPage() {
 
   const source = searchParams.get("source") || "";
   const sent = searchParams.get("sent") === "1";
+  const deliveryFailed = searchParams.get("delivery") === "failed";
   const [formState, setFormState] = useState({
     email: searchParams.get("email")?.trim().toLowerCase() || "",
     otp: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    deliveryFailed
+      ? "We could not send a new OTP right now. You can try again with Resend OTP."
+      : ""
+  );
   const [message, setMessage] = useState(
     sent ? "A 6-digit OTP has been sent to your email." : ""
   );

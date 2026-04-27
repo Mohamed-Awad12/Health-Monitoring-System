@@ -1,51 +1,14 @@
-const crypto = require("crypto");
 const env = require("../config/env");
 const { ROLES } = require("../constants/roles");
 const User = require("../models/User");
-const { sendEmailVerificationMessage, sendPasswordResetEmail } = require("../services/emailService");
+const {
+  hashValue,
+  sendEmailVerificationOtp,
+  sendPasswordResetOtp,
+} = require("../services/userOtpService");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
 const { signToken } = require("../utils/jwt");
-
-const buildEmailVerificationOtp = () =>
-  crypto.randomInt(0, 1000000).toString().padStart(6, "0");
-
-const hashValue = (value) =>
-  crypto.createHash("sha256").update(String(value)).digest("hex");
-
-const issueEmailVerificationOtp = async (user) => {
-  const otp = buildEmailVerificationOtp();
-
-  user.emailVerified = false;
-  user.emailVerificationTokenHash = hashValue(otp);
-  user.emailVerificationExpiresAt = new Date(
-    Date.now() + env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000
-  );
-
-  await user.save();
-
-  return otp;
-};
-
-const sendVerificationEmail = async (user) => {
-  const verificationOtp = await issueEmailVerificationOtp(user);
-
-  return sendEmailVerificationMessage({
-    user,
-    otp: verificationOtp,
-  });
-};
-
-const queueVerificationEmail = async (user) => {
-  try {
-    await sendVerificationEmail(user);
-    return true;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(`Failed to queue verification email for ${user.email}:`, error.message || error);
-    return false;
-  }
-};
 
 const validateAdminBootstrapToken = (token) => {
   if (!env.ADMIN_BOOTSTRAP_TOKEN) {
@@ -91,38 +54,48 @@ const register = (role) =>
       doctorVerification,
     });
 
-    void queueVerificationEmail(user);
+    const emailSent = await sendEmailVerificationOtp(user);
 
     // No token is returned so they are forced to verify their email (and login later).
     const token = null;
 
     res.status(201).json({
-      message: `${role} registered successfully`,
+      message: emailSent
+        ? `${role} registered successfully`
+        : `${role} registered successfully, but we could not send the verification OTP.`,
       token,
       user: user.toJSON(),
       emailVerification: {
         verified: user.emailVerified,
-        emailSent: true,
+        emailSent,
       },
     });
   });
 
 const login = catchAsync(async (req, res) => {
   const normalizedEmail = req.body.email?.trim().toLowerCase();
-  const user = await User.findOne({ email: normalizedEmail }).select("+password");
+  const user = await User.findOne({ email: normalizedEmail }).select(
+    "+password +emailVerificationTokenHash +emailVerificationExpiresAt"
+  );
 
   if (!user || !(await user.comparePassword(String(req.body.password || "")))) {
     throw new ApiError(401, "Invalid email or password");
   }
 
   if (!user.emailVerified) {
-    void queueVerificationEmail(user);
+    const emailSent = await sendEmailVerificationOtp(user);
 
-    throw new ApiError(403, "Please verify your email before logging in.", {
-      code: "EMAIL_NOT_VERIFIED",
-      email: user.email,
-      emailSent: true,
-    });
+    throw new ApiError(
+      403,
+      emailSent
+        ? "Please verify your email before logging in."
+        : "Please verify your email before logging in. We could not send a new OTP right now.",
+      {
+        code: "EMAIL_NOT_VERIFIED",
+        email: user.email,
+        emailSent,
+      }
+    );
   }
 
   if (
@@ -205,10 +178,14 @@ const resendVerificationEmail = catchAsync(async (req, res) => {
     return;
   }
 
-  void queueVerificationEmail(user);
+  const emailSent = await sendEmailVerificationOtp(user);
+
+  if (!emailSent) {
+    throw new ApiError(500, "Failed to send verification OTP");
+  }
 
   res.json({
-    message: "Verification OTP is being sent",
+    message: "Verification OTP sent successfully",
     emailVerification: {
       verified: false,
       emailSent: true,
@@ -260,21 +237,19 @@ const getCurrentUser = catchAsync(async (req, res) => {
   });
 });
 
-
 const forgotPassword = catchAsync(async (req, res) => {
-  const user = await User.findOne({ email: req.body.email });
+  const user = await User.findOne({ email: req.body.email }).select(
+    "+passwordResetTokenHash +passwordResetExpiresAt"
+  );
   if (!user) {
     throw new ApiError(404, "There is no user with that email address");
   }
 
-  const otp = buildEmailVerificationOtp();
-  user.passwordResetTokenHash = hashValue(otp);
-  user.passwordResetExpiresAt = new Date(
-    Date.now() + env.PASSWORD_RESET_OTP_TTL_MINUTES * 60 * 1000
-  );
-  await user.save({ validateBeforeSave: false });
+  const emailSent = await sendPasswordResetOtp(user);
 
-  await sendPasswordResetEmail({ user, otp });
+  if (!emailSent) {
+    throw new ApiError(500, "Failed to send password reset OTP");
+  }
 
   res.status(200).json({
     message: "Password reset OTP sent to email",

@@ -70,8 +70,9 @@ export default function LoginPage() {
       ) {
         const nextEmail = (details?.email || payload.email).trim().toLowerCase();
         const sentFlag = details?.emailSent ? "&sent=1" : "";
+        const deliveryFlag = details?.emailSent === false ? "&delivery=failed" : "";
         navigate(
-          `/verify-email?source=login&email=${encodeURIComponent(nextEmail)}${sentFlag}`,
+          `/verify-email?source=login&email=${encodeURIComponent(nextEmail)}${sentFlag}${deliveryFlag}`,
           { replace: true }
         );
         return;

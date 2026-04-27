@@ -5,9 +5,7 @@ const { ROLES } = require("../constants/roles");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
 const { doctorVerificationDir } = require("../middlewares/upload");
-const { sendEmailVerificationMessage } = require("../services/emailService");
-const crypto = require("crypto");
-const env = require("../config/env");
+const { sendEmailVerificationOtp } = require("../services/userOtpService");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -278,30 +276,11 @@ const reviewDoctorVerification = catchAsync(async (req, res) => {
   });
 });
 
-
-const buildEmailVerificationOtp = () =>
-  crypto.randomInt(0, 1000000).toString().padStart(6, "0");
-
-const hashValue = (value) =>
-  crypto.createHash("sha256").update(String(value)).digest("hex");
-
-const issueEmailVerificationOtp = async (user) => {
-  const otp = buildEmailVerificationOtp();
-
-  user.emailVerified = false;
-  user.emailVerificationTokenHash = hashValue(otp);
-  user.emailVerificationExpiresAt = new Date(
-    Date.now() + env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000
+const sendVerificationEmailToUser = catchAsync(async (req, res) => {
+  const user = await User.findById(req.params.userId).select(
+    "+emailVerificationTokenHash +emailVerificationExpiresAt"
   );
 
-  await user.save();
-
-  return otp;
-};
-
-const sendVerificationEmailToUser = catchAsync(async (req, res) => {
-  const user = await User.findById(req.params.userId);
-  
   if (!user) {
     throw new ApiError(404, "User not found");
   }
@@ -310,12 +289,7 @@ const sendVerificationEmailToUser = catchAsync(async (req, res) => {
     throw new ApiError(400, "User email is already verified");
   }
 
-  const verificationOtp = await issueEmailVerificationOtp(user);
-
-  const emailSent = await sendEmailVerificationMessage({
-    user,
-    otp: verificationOtp,
-  });
+  const emailSent = await sendEmailVerificationOtp(user);
 
   if (!emailSent) {
     throw new ApiError(500, "Failed to send verification email");

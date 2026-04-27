@@ -64,9 +64,11 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      await register(role, payload);
+      const data = await register(role, payload);
+      const emailSent = Boolean(data?.emailVerification?.emailSent);
+      const deliveryFlag = emailSent ? "&sent=1" : "&delivery=failed";
       navigate(
-        `/verify-email?source=register&email=${encodeURIComponent(payload.email)}&sent=1`,
+        `/verify-email?source=register&email=${encodeURIComponent(payload.email)}${deliveryFlag}`,
         { replace: true }
       );
     } catch (requestError) {
