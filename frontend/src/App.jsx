@@ -11,6 +11,7 @@ const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const PatientDashboardPage = lazy(() => import("./pages/PatientDashboardPage"));
 const DoctorDashboardPage = lazy(() => import("./pages/DoctorDashboardPage"));
 const AdminDashboardPage = lazy(() => import("./pages/AdminDashboardPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 const PageWrapper = ({ children }) => (
   <motion.div
@@ -75,6 +76,16 @@ export default function App() {
               <PageWrapper>
                 <ResetPasswordPage />
               </PageWrapper>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute allowedRoles={["patient", "doctor", "admin"]}>
+                <PageWrapper>
+                  <ProfilePage />
+                </PageWrapper>
+              </ProtectedRoute>
             }
           />
           <Route

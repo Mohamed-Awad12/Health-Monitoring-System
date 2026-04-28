@@ -5,6 +5,7 @@ const { ROLES } = require("../constants/roles");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
 const { doctorVerificationDir } = require("../middlewares/upload");
+const { deleteUserAccount } = require("../services/accountService");
 const { sendEmailVerificationOtp } = require("../services/userOtpService");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -204,11 +205,21 @@ const deleteUser = catchAsync(async (req, res) => {
     throw new ApiError(409, "You cannot delete your own admin account");
   }
 
-  const deletedUser = await User.findByIdAndDelete(req.params.userId).lean();
+  const user = await User.findById(req.params.userId);
 
-  if (!deletedUser) {
+  if (!user) {
     throw new ApiError(404, "User not found");
   }
+
+  if (user.role === ROLES.ADMIN) {
+    const adminCount = await User.countDocuments({ role: ROLES.ADMIN });
+
+    if (adminCount <= 1) {
+      throw new ApiError(409, "You cannot delete the last admin account");
+    }
+  }
+
+  await deleteUserAccount(user);
 
   res.json({
     message: "User deleted successfully",

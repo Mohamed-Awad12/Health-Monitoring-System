@@ -16,6 +16,10 @@ const getPageDescription = (source) => {
     return "Your email is not verified yet. Enter the 6-digit OTP to continue.";
   }
 
+  if (source === "profile") {
+    return "Your email address changed. Enter the 6-digit OTP sent to your new email to restore access.";
+  }
+
   return "Enter the 6-digit OTP sent to your email address.";
 };
 

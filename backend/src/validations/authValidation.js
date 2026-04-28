@@ -35,6 +35,32 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const updateProfileSchema = z
+  .object({
+    name: nameSchema.optional(),
+    email: emailSchema.optional(),
+    phone: z.string().trim().max(25).optional().or(z.literal("")),
+  })
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: "At least one field is required",
+  });
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: passwordSchema,
+});
+
+const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(1),
+  confirmation: z
+    .string()
+    .trim()
+    .transform((value) => value.toUpperCase())
+    .refine((value) => value === "DELETE", {
+      message: "confirmation must be DELETE",
+    }),
+});
+
 const verifyEmailSchema = z.object({
   email: emailSchema,
   otp: otpSchema,
@@ -66,6 +92,8 @@ const resetPasswordSchema = z.union([
 ]);
 
 module.exports = {
+  changePasswordSchema,
+  deleteAccountSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   resendVerificationEmailSchema,
@@ -73,5 +101,6 @@ module.exports = {
   registerDoctorSchema,
   registerAdminBootstrapSchema,
   loginSchema,
+  updateProfileSchema,
   verifyEmailSchema,
 };

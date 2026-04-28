@@ -49,10 +49,14 @@ const initializeSocket = (httpServer) => {
       }
 
       const decoded = verifyToken(token);
-      const user = await User.findById(decoded.sub).select("_id role");
+      const user = await User.findById(decoded.sub).select("_id role emailVerified");
 
       if (!user) {
         return next(new Error("User not found"));
+      }
+
+      if (!user.emailVerified) {
+        return next(new Error("Email verification is required"));
       }
 
       socket.user = {

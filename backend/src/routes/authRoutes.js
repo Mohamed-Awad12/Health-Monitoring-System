@@ -4,10 +4,13 @@ const { authenticate } = require("../middlewares/auth");
 const validate = require("../middlewares/validate");
 const { doctorVerificationUpload } = require("../middlewares/upload");
 const {
+  changePasswordSchema,
+  deleteAccountSchema,
   registerPatientSchema,
   registerDoctorSchema,
   registerAdminBootstrapSchema,
   loginSchema,
+  updateProfileSchema,
   verifyEmailSchema,
   resendVerificationEmailSchema,
   forgotPasswordSchema,
@@ -46,7 +49,26 @@ router.post(
   validate({ body: resendVerificationEmailSchema }),
   authController.resendVerificationEmail
 );
-router.get("/me", authenticate, authController.getCurrentUser);
+router
+  .route("/me")
+  .get(authenticate, authController.getCurrentUser)
+  .patch(
+    authenticate,
+    validate({ body: updateProfileSchema }),
+    authController.updateCurrentUser
+  )
+  .delete(
+    authenticate,
+    validate({ body: deleteAccountSchema }),
+    authController.deleteCurrentUser
+  );
+
+router.patch(
+  "/me/password",
+  authenticate,
+  validate({ body: changePasswordSchema }),
+  authController.changeCurrentUserPassword
+);
 
 
 router.post("/forgot-password", validate({ body: forgotPasswordSchema }), authController.forgotPassword);

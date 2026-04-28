@@ -6,6 +6,7 @@ const {
   sendEmailVerificationOtp,
   sendPasswordResetOtp,
 } = require("../services/userOtpService");
+const { deleteUserAccount } = require("../services/accountService");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
 const { signToken } = require("../utils/jwt");
@@ -18,6 +19,15 @@ const validateAdminBootstrapToken = (token) => {
   if (!token || token !== env.ADMIN_BOOTSTRAP_TOKEN) {
     throw new ApiError(403, "Invalid admin bootstrap token");
   }
+};
+
+const normalizeOptionalString = (value) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized || undefined;
 };
 
 const register = (role) =>
@@ -237,6 +247,125 @@ const getCurrentUser = catchAsync(async (req, res) => {
   });
 });
 
+const updateCurrentUser = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user._id).select(
+    "+emailVerificationTokenHash +emailVerificationExpiresAt"
+  );
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const normalizedEmail = req.body.email?.trim().toLowerCase();
+  const emailChanged = Boolean(normalizedEmail && normalizedEmail !== user.email);
+
+  if (emailChanged) {
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    }).lean();
+
+    if (existingUser) {
+      throw new ApiError(409, "Email is already in use");
+    }
+  }
+
+  if (req.body.name !== undefined) {
+    user.name = req.body.name;
+  }
+
+  if (req.body.phone !== undefined) {
+    user.phone = normalizeOptionalString(req.body.phone);
+  }
+
+  if (emailChanged) {
+    user.email = normalizedEmail;
+    user.emailVerified = false;
+    user.emailVerificationTokenHash = null;
+    user.emailVerificationExpiresAt = null;
+
+    const emailSent = await sendEmailVerificationOtp(user);
+
+    res.json({
+      message: emailSent
+        ? "Profile updated. Verify your new email address to continue."
+        : "Profile updated. Verify your new email address to continue. We could not send a new OTP right now.",
+      user: user.toJSON(),
+      sessionRevoked: true,
+      emailVerification: {
+        verified: user.emailVerified,
+        emailSent,
+      },
+    });
+    return;
+  }
+
+  await user.save();
+
+  res.json({
+    message: "Profile updated successfully",
+    user: user.toJSON(),
+    sessionRevoked: false,
+    emailVerification: {
+      verified: user.emailVerified,
+    },
+  });
+});
+
+const changeCurrentUserPassword = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user._id).select("+password");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const passwordMatches = await user.comparePassword(req.body.currentPassword);
+
+  if (!passwordMatches) {
+    throw new ApiError(400, "Current password is incorrect");
+  }
+
+  if (req.body.currentPassword === req.body.newPassword) {
+    throw new ApiError(400, "New password must be different from the current password");
+  }
+
+  user.password = req.body.newPassword;
+  await user.save();
+
+  res.json({
+    message: "Password updated successfully",
+    user: user.toJSON(),
+  });
+});
+
+const deleteCurrentUser = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user._id).select("+password");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const passwordMatches = await user.comparePassword(req.body.currentPassword);
+
+  if (!passwordMatches) {
+    throw new ApiError(400, "Current password is incorrect");
+  }
+
+  if (user.role === ROLES.ADMIN) {
+    const adminCount = await User.countDocuments({ role: ROLES.ADMIN });
+
+    if (adminCount <= 1) {
+      throw new ApiError(409, "You cannot delete the last admin account");
+    }
+  }
+
+  await deleteUserAccount(user);
+
+  res.json({
+    message: "Account deleted successfully",
+  });
+});
+
 const forgotPassword = catchAsync(async (req, res) => {
   const user = await User.findOne({ email: req.body.email }).select(
     "+passwordResetTokenHash +passwordResetExpiresAt"
@@ -299,6 +428,8 @@ const resetPassword = catchAsync(async (req, res) => {
 });
 
 module.exports = {
+  changeCurrentUserPassword,
+  deleteCurrentUser,
   forgotPassword,
   resetPassword,
   registerAdminBootstrap,
@@ -308,4 +439,5 @@ module.exports = {
   verifyEmail,
   resendVerificationEmail,
   getCurrentUser,
+  updateCurrentUser,
 };

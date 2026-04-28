@@ -70,6 +70,10 @@ export function AuthProvider({ children }) {
     setUser(nextUser);
   };
 
+  const updateCurrentUser = (nextUser) => {
+    setUser(nextUser);
+  };
+
   const login = async (credentials) => {
     const { data } = await loginRequest(credentials);
     applySession(data);
@@ -105,6 +109,7 @@ export function AuthProvider({ children }) {
         login,
         register,
         logout,
+        updateCurrentUser,
       }}
     >
       {children}

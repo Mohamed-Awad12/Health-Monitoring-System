@@ -50,3 +50,14 @@ export const resetPassword = (tokenOrPayload, maybePassword) => {
 };
 
 export const getCurrentUser = () => api.get("/auth/me");
+
+export const updateCurrentUserProfile = (payload) =>
+  api.patch("/auth/me", payload);
+
+export const changeCurrentUserPassword = (payload) =>
+  api.patch("/auth/me/password", payload);
+
+export const deleteCurrentUserAccount = (payload) =>
+  api.delete("/auth/me", {
+    data: payload,
+  });

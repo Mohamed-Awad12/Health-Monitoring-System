@@ -1,12 +1,17 @@
 import { useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiPreferences } from "../../hooks/useUiPreferences";
+import { getRoleHomePath } from "../../utils/roleRoutes";
 import PreferenceControls from "../common/PreferenceControls";
 
 export default function AppShell({ title, subtitle, actions, children }) {
   const { user, logout } = useAuth();
-  const { t } = useUiPreferences(); 
+  const { t } = useUiPreferences();
+  const location = useLocation();
+  const navigate = useNavigate();
   const shellRef = useRef(null);
+  const isProfilePage = location.pathname === "/profile";
 
   useEffect(() => {
     const root = document.documentElement;
@@ -112,6 +117,17 @@ export default function AppShell({ title, subtitle, actions, children }) {
 
         <div className="topbar-actions">
           {actions}
+          {user ? (
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() =>
+                navigate(isProfilePage ? getRoleHomePath(user.role) : "/profile")
+              }
+            >
+              {isProfilePage ? t("common.dashboard") : t("common.profile")}
+            </button>
+          ) : null}
           <PreferenceControls />
           <div className="profile-chip">
             <div>

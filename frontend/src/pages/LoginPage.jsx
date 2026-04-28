@@ -15,6 +15,8 @@ export default function LoginPage() {
   const searchParams = new URLSearchParams(location.search);
   const isVerified = searchParams.get("verified");
   const isResetSuccess = searchParams.get("reset");
+  const isDeleteSuccess = searchParams.get("deleted");
+  const deletedRole = searchParams.get("role");
   const emailFromQuery = searchParams.get("email")?.trim().toLowerCase() || "";
 
   const [formState, setFormState] = useState({
@@ -107,6 +109,13 @@ export default function LoginPage() {
           {isResetSuccess === 'success' && (
             <div className="auth-neo-success" style={{color: 'var(--accent)', marginBottom: '1rem', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem'}}>
               Password reset successful! You can now log in.
+            </div>
+          )}
+          {isDeleteSuccess === "success" && (
+            <div className="auth-neo-success" style={{color: 'var(--accent)', marginBottom: '1rem', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem'}}>
+              {deletedRole === "admin"
+                ? "Admin account deleted successfully."
+                : "Account deleted successfully."}
             </div>
           )}
           {error && <div className="auth-neo-error">{error}</div>}
