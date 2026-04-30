@@ -7,6 +7,7 @@ export default function MetricCard({
   value,
   unit,
   status,
+  statusLabel,
   caption,
   variant = "",
 }) {
@@ -33,7 +34,7 @@ export default function MetricCard({
     <article className={cardClassName}>
       <div className="metric-card-header">
         <span>{label}</span>
-        {status ? <StatusPill status={status} /> : null}
+        {status ? <StatusPill status={status} label={statusLabel} /> : null}
       </div>
       <div className={updating ? "metric-card-value is-updating" : "metric-card-value"}>
         <strong>{displayValue}</strong>

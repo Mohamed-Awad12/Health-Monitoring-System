@@ -12,6 +12,7 @@ const PatientDashboardPage = lazy(() => import("./pages/PatientDashboardPage"));
 const DoctorDashboardPage = lazy(() => import("./pages/DoctorDashboardPage"));
 const AdminDashboardPage = lazy(() => import("./pages/AdminDashboardPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 const PageWrapper = ({ children }) => (
   <motion.div
@@ -37,7 +38,12 @@ export default function App() {
     >
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route
+            path="/"
+            element={
+              <LandingPage />
+            }
+          />
           <Route
             path="/login"
             element={
@@ -118,7 +124,7 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AnimatePresence>
     </Suspense>

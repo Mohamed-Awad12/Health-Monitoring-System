@@ -14,8 +14,15 @@ import EmptyState from "../components/ui/EmptyState";
 import MetricCard from "../components/ui/MetricCard";
 import RangeTabs from "../components/ui/RangeTabs";
 import SectionCard from "../components/ui/SectionCard";
+import {
+  AlertListSkeleton,
+  OverviewSkeleton,
+  PatientListSkeleton,
+  StatusCardListSkeleton,
+} from "../components/ui/Skeleton";
 import StatusPill from "../components/ui/StatusPill";
 import { useSocket } from "../hooks/useSocket";
+import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { FiUsers, FiUserCheck, FiInbox } from "react-icons/fi";
 
@@ -33,6 +40,7 @@ const getStatusFromReading = (reading, openAlertCount = 0) => {
 
 export default function DoctorDashboardPage() {
   const { socket } = useSocket();
+  const { addToast } = useToast();
   const { formatDateTime, formatNumber, t } = useUiPreferences();
   const [search, setSearch] = useState("");
   const [range, setRange] = useState("day");
@@ -42,8 +50,8 @@ export default function DoctorDashboardPage() {
   const [dashboard, setDashboard] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [decisionLoadingId, setDecisionLoadingId] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
   const [error, setError] = useState("");
 
   const loadPatients = async (searchValue = search) => {
@@ -66,18 +74,25 @@ export default function DoctorDashboardPage() {
 
   const loadSelectedPatient = async (patientId = selectedPatientId, selectedRange = range) => {
     if (!patientId) {
+      setDashboardLoading(false);
       setDashboard(null);
       setAlerts([]);
       return;
     }
 
-    const [dashboardResponse, alertsResponse] = await Promise.all([
-      getDoctorPatientDashboard(patientId, selectedRange),
-      getDoctorPatientAlerts(patientId, "all"),
-    ]);
+    setDashboardLoading(true);
 
-    setDashboard(dashboardResponse.data);
-    setAlerts(alertsResponse.data.alerts);
+    try {
+      const [dashboardResponse, alertsResponse] = await Promise.all([
+        getDoctorPatientDashboard(patientId, selectedRange),
+        getDoctorPatientAlerts(patientId, "all"),
+      ]);
+
+      setDashboard(dashboardResponse.data);
+      setAlerts(alertsResponse.data.alerts);
+    } finally {
+      setDashboardLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -135,16 +150,15 @@ export default function DoctorDashboardPage() {
 
   const handleAssignmentDecision = async (assignmentId, decision, patientId) => {
     setDecisionLoadingId(`${decision}:${assignmentId}`);
-    setActionMessage("");
     setError("");
 
     try {
       if (decision === "approve") {
         await approveDoctorAssignment(assignmentId);
-        setActionMessage(t("doctor.approvedSuccessfully"));
+        addToast({ type: "success", message: t("doctor.approvedSuccessfully") });
       } else {
         await denyDoctorAssignment(assignmentId);
-        setActionMessage(t("doctor.deniedSuccessfully"));
+        addToast({ type: "success", message: t("doctor.deniedSuccessfully") });
       }
 
       await loadPatients(search);
@@ -182,14 +196,21 @@ export default function DoctorDashboardPage() {
         </>
       }
     >
-      {actionMessage ? <div className="form-success page-feedback">{actionMessage}</div> : null}
-      {error && !loading ? <div className="form-error page-feedback">{error}</div> : null}
+      {error && !loading ? <div className="form-error page-feedback" role="alert">{error}</div> : null}
 
       <div className="doctor-layout">
         <aside className="patient-list-panel">
-          <SectionCard title={t("doctor.pendingRequests")} className="requests-section">
+          <SectionCard
+            id="doctor-requests"
+            title={t("doctor.pendingRequests")}
+            className="requests-section"
+          >
             {loading ? (
-              <div className="loading-panel">{t("doctor.loadingPatients")}</div>
+              <StatusCardListSkeleton
+                label={t("doctor.loadingPatients")}
+                className="request-review-card"
+                showActions
+              />
             ) : !pendingAssignments.length ? (
               <EmptyState
                 icon={FiUserCheck}
@@ -266,7 +287,11 @@ export default function DoctorDashboardPage() {
             )}
           </SectionCard>
 
-          <SectionCard title={t("doctor.assignedPatients")} className="patients-section">
+          <SectionCard
+            id="doctor-patients"
+            title={t("doctor.assignedPatients")}
+            className="patients-section"
+          >
             <label className="search-label">
               {t("doctor.searchPatients")}
               <input
@@ -278,7 +303,7 @@ export default function DoctorDashboardPage() {
             </label>
 
             {loading ? (
-              <div className="loading-panel">{t("doctor.loadingPatients")}</div>
+              <PatientListSkeleton label={t("doctor.loadingPatients")} />
             ) : !patients.length ? (
               <EmptyState
                 icon={FiUsers}
@@ -327,18 +352,29 @@ export default function DoctorDashboardPage() {
 
         <div className="dashboard-main">
           <SectionCard
+            id="doctor-overview"
             title={t("doctor.selectedPatientOverview")}
             actions={<RangeTabs value={range} onChange={setRange} />}
             className="spotlight-section"
           >
-            {!selectedPatientId ? (
+            {loading || dashboardLoading ? (
+              <OverviewSkeleton
+                label={t("doctor.loadingPatientDashboard")}
+                metricVariants={[
+                  "live-spo2-card",
+                  "live-bpm-card",
+                  "alert-metric-card",
+                  "sample-metric-card",
+                ]}
+              />
+            ) : !selectedPatientId ? (
               <EmptyState
                 icon={FiInbox}
                 title={t("doctor.selectPatientTitle")}
                 description={t("doctor.selectPatientDescription")}
               />
             ) : !dashboard ? (
-              <div className="loading-panel">{t("doctor.loadingPatientDashboard")}</div>
+              <div className="form-error">{error || t("doctor.patientDataLoadFailed")}</div>
             ) : (
               <>
                 <div className="metrics-grid">
@@ -385,8 +421,16 @@ export default function DoctorDashboardPage() {
             )}
           </SectionCard>
 
-          <SectionCard title={t("doctor.patientAlerts")} className="history-section">
-            <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
+          <SectionCard
+            id="doctor-alerts"
+            title={t("doctor.patientAlerts")}
+            className="history-section"
+          >
+            {loading || dashboardLoading ? (
+              <AlertListSkeleton label={t("doctor.loadingPatientDashboard")} />
+            ) : (
+              <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
+            )}
           </SectionCard>
         </div>
       </div>

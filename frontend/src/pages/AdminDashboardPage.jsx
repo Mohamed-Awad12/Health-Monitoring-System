@@ -12,8 +12,11 @@ import AppShell from "../components/layout/AppShell";
 import EmptyState from "../components/ui/EmptyState";
 import MetricCard from "../components/ui/MetricCard";
 import SectionCard from "../components/ui/SectionCard";
+import { AdminUsersSkeleton, OverviewSkeleton } from "../components/ui/Skeleton";
 import StatusPill from "../components/ui/StatusPill";
 import { useAuth } from "../hooks/useAuth";
+import { useConfirm } from "../hooks/useConfirm";
+import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { FiUsers } from "react-icons/fi";
 
@@ -57,6 +60,8 @@ const mapDoctorVerificationStatusToPill = (status) => {
 
 export default function AdminDashboardPage() {
   const { user: currentUser } = useAuth();
+  const { addToast } = useToast();
+  const confirm = useConfirm();
   const { formatDateTime, formatNumber, t } = useUiPreferences();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -70,7 +75,6 @@ export default function AdminDashboardPage() {
   const [openingDocumentId, setOpeningDocumentId] = useState("");
   const [editingUser, setEditingUser] = useState(null);
   const [formState, setFormState] = useState(defaultFormState);
-  const [actionMessage, setActionMessage] = useState("");
   const [error, setError] = useState("");
 
   const loadUsers = useCallback(
@@ -155,7 +159,6 @@ export default function AdminDashboardPage() {
     }
 
     setSubmitting(true);
-    setActionMessage("");
     setError("");
 
     const payload = {
@@ -174,10 +177,10 @@ export default function AdminDashboardPage() {
     try {
       if (editingUser) {
         await updateAdminUser(editingUser._id, payload);
-        setActionMessage(t("admin.updateSuccess"));
+        addToast({ type: "success", message: t("admin.updateSuccess") });
       } else {
         await createAdminUser(payload);
-        setActionMessage(t("admin.createSuccess"));
+        addToast({ type: "success", message: t("admin.createSuccess") });
       }
 
       resetForm();
@@ -193,12 +196,18 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteUser = async (nextUser) => {
-    if (!window.confirm(t("admin.deleteConfirm", { email: nextUser.email }))) {
+    const confirmed = await confirm({
+      title: t("admin.deleteConfirm", { email: nextUser.email }),
+      confirmLabel: t("admin.delete"),
+      cancelLabel: t("admin.cancelEdit"),
+      variant: "danger",
+    });
+
+    if (!confirmed) {
       return;
     }
 
     setDeletingId(nextUser._id);
-    setActionMessage("");
     setError("");
 
     try {
@@ -208,7 +217,7 @@ export default function AdminDashboardPage() {
         resetForm();
       }
 
-      setActionMessage(t("admin.deleteSuccess"));
+      addToast({ type: "success", message: t("admin.deleteSuccess") });
       await loadUsers(search, roleFilter, doctorVerificationFilter);
     } catch (requestError) {
       setError(requestError.response?.data?.message || t("admin.deleteFailed"));
@@ -219,16 +228,14 @@ export default function AdminDashboardPage() {
 
   const handleReviewDoctorVerification = async (nextUser, status) => {
     setReviewingId(nextUser._id);
-    setActionMessage("");
     setError("");
 
     try {
       await reviewDoctorVerification(nextUser._id, { status });
-      setActionMessage(
-        status === "approved"
-          ? t("admin.doctorVerificationApproved")
-          : t("admin.doctorVerificationRejected")
-      );
+      const reviewMsg = status === "approved"
+        ? t("admin.doctorVerificationApproved")
+        : t("admin.doctorVerificationRejected");
+      addToast({ type: "success", message: reviewMsg });
       await loadUsers(search, roleFilter, doctorVerificationFilter);
     } catch (requestError) {
       setError(
@@ -264,17 +271,22 @@ export default function AdminDashboardPage() {
   const [sendingEmailId, setSendingEmailId] = useState(null);
 
   const handleSendVerificationEmail = async (nextUser) => {
-    if (!window.confirm("Send a verification email to " + nextUser.email + "?")) {
+    const confirmed = await confirm({
+      title: "Send a verification email to " + nextUser.email + "?",
+      confirmLabel: "Send Email",
+      variant: "primary",
+    });
+
+    if (!confirmed) {
       return;
     }
 
     setSendingEmailId(nextUser._id);
-    setActionMessage("");
     setError("");
 
     try {
       await sendUserVerificationEmail(nextUser._id);
-      setActionMessage("Verification email sent to " + nextUser.email);
+      addToast({ type: "success", message: "Verification email sent to " + nextUser.email });
     } catch (requestError) {
       setError(
         requestError.response?.data?.message || "Failed to send verification email."
@@ -315,12 +327,12 @@ export default function AdminDashboardPage() {
         </>
       }
     >
-      {actionMessage ? <div className="form-success page-feedback">{actionMessage}</div> : null}
-      {error ? <div className="form-error page-feedback">{error}</div> : null}
+      {error ? <div className="form-error page-feedback" role="alert">{error}</div> : null}
 
       <div className="admin-layout">
         <aside className="admin-side">
           <SectionCard
+            id="admin-user-form"
             title={editingUser ? t("admin.userFormEditTitle") : t("admin.userFormCreateTitle")}
             className="directory-section"
           >
@@ -463,7 +475,11 @@ export default function AdminDashboardPage() {
             </form>
           </SectionCard>
 
-          <SectionCard title={t("admin.filtersTitle")} className="requests-section">
+          <SectionCard
+            id="admin-filters"
+            title={t("admin.filtersTitle")}
+            className="requests-section"
+          >
             <div className="admin-filter-grid">
               <label>
                 {t("admin.searchUsers")}
@@ -514,42 +530,67 @@ export default function AdminDashboardPage() {
         </aside>
 
         <div className="admin-main">
-          <SectionCard title={t("admin.overviewTitle")} className="spotlight-section">
-            <div className="metrics-grid">
-              <MetricCard
-                label={t("admin.totalUsers")}
-                value={totalUsers}
-                status="normal"
-                caption={t("admin.totalUsersCaption")}
-                variant="sample-metric-card"
+          <SectionCard
+            id="admin-overview"
+            title={t("admin.overviewTitle")}
+            className="spotlight-section"
+          >
+            {loading ? (
+              <OverviewSkeleton
+                label={t("common.loading")}
+                metricVariants={[
+                  "sample-metric-card",
+                  "alert-metric-card",
+                  "live-bpm-card",
+                  "live-spo2-card",
+                ]}
+                showChart={false}
               />
-              <MetricCard
-                label={t("admin.totalAdmins")}
-                value={counts.admins}
-                status="critical"
-                caption={t("admin.totalAdminsCaption")}
-                variant="alert-metric-card"
-              />
-              <MetricCard
-                label={t("admin.totalDoctors")}
-                value={counts.doctors}
-                status="active"
-                caption={t("admin.totalDoctorsCaption")}
-                variant="live-bpm-card"
-              />
-              <MetricCard
-                label={t("admin.totalPatients")}
-                value={counts.patients}
-                status="normal"
-                caption={t("admin.totalPatientsCaption")}
-                variant="live-spo2-card"
-              />
-            </div>
+            ) : (
+              <div className="metrics-grid">
+                <MetricCard
+                  label={t("admin.totalUsers")}
+                  value={totalUsers}
+                  status="normal"
+                  statusLabel={t("admin.overviewUsersStatus")}
+                  caption={t("admin.totalUsersCaption")}
+                  variant="sample-metric-card"
+                />
+                <MetricCard
+                  label={t("admin.totalAdmins")}
+                  value={counts.admins}
+                  status="critical"
+                  statusLabel={t("admin.overviewAdminsStatus")}
+                  caption={t("admin.totalAdminsCaption")}
+                  variant="alert-metric-card"
+                />
+                <MetricCard
+                  label={t("admin.totalDoctors")}
+                  value={counts.doctors}
+                  status="active"
+                  statusLabel={t("admin.overviewDoctorsStatus")}
+                  caption={t("admin.totalDoctorsCaption")}
+                  variant="live-bpm-card"
+                />
+                <MetricCard
+                  label={t("admin.totalPatients")}
+                  value={counts.patients}
+                  status="normal"
+                  statusLabel={t("admin.overviewPatientsStatus")}
+                  caption={t("admin.totalPatientsCaption")}
+                  variant="live-spo2-card"
+                />
+              </div>
+            )}
           </SectionCard>
 
-          <SectionCard title={t("admin.usersListTitle")} className="history-section">
+          <SectionCard
+            id="admin-users"
+            title={t("admin.usersListTitle")}
+            className="history-section"
+          >
             {loading ? (
-              <div className="loading-panel">{t("common.loading")}</div>
+              <AdminUsersSkeleton label={t("common.loading")} />
             ) : !users.length ? (
               <EmptyState
                 icon={FiUsers}

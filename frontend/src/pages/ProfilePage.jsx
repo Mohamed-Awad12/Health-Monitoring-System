@@ -9,6 +9,7 @@ import AppShell from "../components/layout/AppShell";
 import SectionCard from "../components/ui/SectionCard";
 import StatusPill from "../components/ui/StatusPill";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { getRoleHomePath } from "../utils/roleRoutes";
 
@@ -35,6 +36,7 @@ const getDoctorVerificationPresentation = (status, t) => {
 
 export default function ProfilePage() {
   const { user, logout, updateCurrentUser } = useAuth();
+  const { addToast } = useToast();
   const { formatDateTime, t } = useUiPreferences();
   const navigate = useNavigate();
   const [profileForm, setProfileForm] = useState({
@@ -54,8 +56,6 @@ export default function ProfilePage() {
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
-  const [passwordMessage, setPasswordMessage] = useState("");
   const [profileError, setProfileError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -83,7 +83,6 @@ export default function ProfilePage() {
     }
 
     setProfileSubmitting(true);
-    setProfileMessage("");
     setProfileError("");
 
     try {
@@ -104,7 +103,7 @@ export default function ProfilePage() {
       }
 
       updateCurrentUser(data.user);
-      setProfileMessage(data.message || t("profile.profileUpdated"));
+      addToast({ type: "success", message: data.message || t("profile.profileUpdated") });
     } catch (requestError) {
       setProfileError(
         requestError.response?.data?.message || t("profile.profileUpdateFailed")
@@ -128,7 +127,6 @@ export default function ProfilePage() {
     }
 
     setPasswordSubmitting(true);
-    setPasswordMessage("");
     setPasswordError("");
 
     try {
@@ -143,7 +141,7 @@ export default function ProfilePage() {
         confirmPassword: "",
       });
       updateCurrentUser(data.user);
-      setPasswordMessage(data.message || t("profile.passwordUpdated"));
+      addToast({ type: "success", message: data.message || t("profile.passwordUpdated") });
     } catch (requestError) {
       setPasswordError(
         requestError.response?.data?.message || t("profile.passwordUpdateFailed")
@@ -207,8 +205,7 @@ export default function ProfilePage() {
     <AppShell title={t("profile.title")} subtitle={t("profile.subtitle")}>
       <div className="profile-page-grid">
         <SectionCard title={t("profile.accountInformation")}>
-          {profileMessage ? <div className="form-success page-feedback">{profileMessage}</div> : null}
-          {profileError ? <div className="form-error page-feedback">{profileError}</div> : null}
+          {profileError ? <div className="form-error page-feedback" role="alert">{profileError}</div> : null}
 
           <form className="profile-form" onSubmit={handleProfileSubmit}>
             <div className="profile-form-grid">
@@ -319,8 +316,7 @@ export default function ProfilePage() {
         </SectionCard>
 
         <SectionCard title={t("profile.changePassword")}>
-          {passwordMessage ? <div className="form-success page-feedback">{passwordMessage}</div> : null}
-          {passwordError ? <div className="form-error page-feedback">{passwordError}</div> : null}
+          {passwordError ? <div className="form-error page-feedback" role="alert">{passwordError}</div> : null}
 
           <form className="profile-form" onSubmit={handlePasswordSubmit}>
             <div className="profile-form-grid">

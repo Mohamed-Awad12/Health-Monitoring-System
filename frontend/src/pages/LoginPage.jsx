@@ -102,17 +102,17 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           {isVerified === "success" && (
-            <div className="auth-neo-success" style={{color: 'var(--accent)', marginBottom: '1rem', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem'}}>
+            <div className="auth-neo-success" role="alert">
               Email verified successfully. You can now log in.
             </div>
           )}
           {isResetSuccess === 'success' && (
-            <div className="auth-neo-success" style={{color: 'var(--accent)', marginBottom: '1rem', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem'}}>
+            <div className="auth-neo-success" role="alert">
               Password reset successful! You can now log in.
             </div>
           )}
           {isDeleteSuccess === "success" && (
-            <div className="auth-neo-success" style={{color: 'var(--accent)', marginBottom: '1rem', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem'}}>
+            <div className="auth-neo-success" role="alert">
               {deletedRole === "admin"
                 ? "Admin account deleted successfully."
                 : "Account deleted successfully."}

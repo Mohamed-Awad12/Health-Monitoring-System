@@ -17,9 +17,18 @@ import EmptyState from "../components/ui/EmptyState";
 import MetricCard from "../components/ui/MetricCard";
 import RangeTabs from "../components/ui/RangeTabs";
 import SectionCard from "../components/ui/SectionCard";
+import {
+  AlertListSkeleton,
+  DevicePanelSkeleton,
+  DirectorySkeleton,
+  OverviewSkeleton,
+  StatusCardListSkeleton,
+} from "../components/ui/Skeleton";
 import StatusPill from "../components/ui/StatusPill";
 import { useAuth } from "../hooks/useAuth";
+import { useConfirm } from "../hooks/useConfirm";
 import { useSocket } from "../hooks/useSocket";
+import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { FiSmartphone, FiUserX, FiSearch, FiActivity } from "react-icons/fi";
 
@@ -83,6 +92,8 @@ const getSpo2Trend = (series = []) => {
 export default function PatientDashboardPage() {
   const { user } = useAuth();
   const { socket } = useSocket();
+  const { addToast } = useToast();
+  const confirm = useConfirm();
   const { formatDateTime, t, localeTag } = useUiPreferences();
   const locale = localeTag === "ar-EG" ? "ar" : "en";
   const [range, setRange] = useState("day");
@@ -107,7 +118,6 @@ export default function PatientDashboardPage() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantReport, setAssistantReport] = useState(null);
   const [assistantError, setAssistantError] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
   const [error, setError] = useState("");
   const doctorRequestIdRef = useRef(0);
 
@@ -231,12 +241,11 @@ export default function PatientDashboardPage() {
   const handleLinkDevice = async (event) => {
     event.preventDefault();
     setDeviceSubmitting(true);
-    setActionMessage("");
     setError("");
 
     try {
       await linkDevice(deviceForm);
-      setActionMessage(t("patient.deviceLinked"));
+      addToast({ type: "success", message: t("patient.deviceLinked") });
       await loadDashboard(range);
       setDeviceForm({ deviceSecretId: "", label: "" });
     } catch (requestError) {
@@ -248,12 +257,11 @@ export default function PatientDashboardPage() {
 
   const handleAssignDoctor = async (doctorId) => {
     setAssigningDoctorId(doctorId);
-    setActionMessage("");
     setError("");
 
     try {
       await assignDoctor({ doctorId });
-      setActionMessage(t("patient.requestSent"));
+      addToast({ type: "success", message: t("patient.requestSent") });
       await Promise.all([
         loadDashboard(range),
         loadDoctorDirectory({
@@ -278,17 +286,24 @@ export default function PatientDashboardPage() {
   };
 
   const handleUnassignDoctor = async (assignmentId) => {
-    if (!window.confirm(t("patient.confirmUnassignPrompt"))) {
+    const confirmed = await confirm({
+      title: t("patient.confirmUnassignPrompt"),
+      message: "",
+      confirmLabel: t("patient.unassignDoctor"),
+      cancelLabel: t("common.dashboard"),
+      variant: "danger",
+    });
+
+    if (!confirmed) {
       return;
     }
 
     setUnassigningAssignmentId(assignmentId);
-    setActionMessage("");
     setError("");
 
     try {
       await unassignDoctor(assignmentId);
-      setActionMessage(t("patient.unassignSuccess"));
+      addToast({ type: "success", message: t("patient.unassignSuccess") });
       await Promise.all([
         loadDashboard(range),
         loadDoctorDirectory({
@@ -437,18 +452,27 @@ export default function PatientDashboardPage() {
       subtitle={t("patient.dashboardSubtitle")}
       actions={<StatusPill status={dashboard?.openAlertCount ? "critical" : latestStatus} />}
     >
-      {actionMessage ? <div className="form-success page-feedback">{actionMessage}</div> : null}
-      {error && !loading ? <div className="form-error page-feedback">{error}</div> : null}
+      {error && !loading ? <div className="form-error page-feedback" role="alert">{error}</div> : null}
 
       <div className="dashboard-grid">
         <div className="dashboard-main">
           <SectionCard
+            id="patient-overview"
             title={t("patient.vitalOverview")}
             actions={<RangeTabs value={range} onChange={setRange} />}
             className="spotlight-section"
           >
             {loading ? (
-              <div className="loading-panel">{t("patient.vitalsLoading")}</div>
+              <OverviewSkeleton
+                label={t("patient.vitalsLoading")}
+                metricVariants={[
+                  "live-spo2-card",
+                  "live-bpm-card",
+                  "alert-metric-card",
+                  "sample-metric-card",
+                ]}
+                showSnapshots
+              />
             ) : error ? (
               <div className="form-error">{error}</div>
             ) : (
@@ -509,14 +533,28 @@ export default function PatientDashboardPage() {
             )}
           </SectionCard>
 
-          <SectionCard title={t("patient.alertsTimeline")} className="history-section">
-            <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
+          <SectionCard
+            id="patient-alerts"
+            title={t("patient.alertsTimeline")}
+            className="history-section"
+          >
+            {loading ? (
+              <AlertListSkeleton label={t("patient.vitalsLoading")} />
+            ) : (
+              <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
+            )}
           </SectionCard>
         </div>
 
         <aside className="dashboard-sidebar">
-          <SectionCard title={t("patient.connectedDevice")} className="device-glass-section">
-            {dashboard?.device ? (
+          <SectionCard
+            id="patient-device"
+            title={t("patient.connectedDevice")}
+            className="device-glass-section"
+          >
+            {loading ? (
+              <DevicePanelSkeleton label={t("patient.vitalsLoading")} />
+            ) : dashboard?.device ? (
               <div className="stack-list device-status-panel">
                 <div className="line-item">
                   <span>{t("common.label")}</span>
@@ -575,8 +613,17 @@ export default function PatientDashboardPage() {
             </form>
           </SectionCard>
 
-          <SectionCard title={t("patient.careTeamStatus")} className="care-team-section">
-            {hasCareTeam ? (
+          <SectionCard
+            id="patient-care-team"
+            title={t("patient.careTeamStatus")}
+            className="care-team-section"
+          >
+            {loading ? (
+              <StatusCardListSkeleton
+                label={t("patient.vitalsLoading")}
+                className="status-detail-card"
+              />
+            ) : hasCareTeam ? (
               <div className="care-team-list">
                 {activeCareTeam.map((relation) => (
                   <article key={relation.id} className="status-detail-card approved">
@@ -650,7 +697,11 @@ export default function PatientDashboardPage() {
             )}
           </SectionCard>
 
-          <SectionCard title={t("patient.chooseDoctorTitle")} className="directory-section">
+          <SectionCard
+            id="patient-directory"
+            title={t("patient.chooseDoctorTitle")}
+            className="directory-section"
+          >
             <p className="section-note">{t("patient.requestDescription")}</p>
 
             <label className="search-label">
@@ -686,7 +737,7 @@ export default function PatientDashboardPage() {
                 </div>
               </div>
             ) : doctorLoading && !doctors.length ? (
-              <div className="loading-panel">{t("patient.loadingDoctorsDirectory")}</div>
+              <DirectorySkeleton label={t("patient.loadingDoctorsDirectory")} count={3} />
             ) : doctors.length ? (
               <>
                 <div className="doctor-directory">
@@ -775,7 +826,11 @@ export default function PatientDashboardPage() {
             )}
           </SectionCard>
 
-          <SectionCard title={t("patient.reportExport")} className="report-section">
+          <SectionCard
+            id="patient-reports"
+            title={t("patient.reportExport")}
+            className="report-section"
+          >
             <p className="section-note">{t("patient.reportDescription")}</p>
             <div className="button-row">
               <button
@@ -797,7 +852,11 @@ export default function PatientDashboardPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title={t("patient.assistantTitle")} className="assistant-section">
+          <SectionCard
+            id="patient-assistant"
+            title={t("patient.assistantTitle")}
+            className="assistant-section"
+          >
             <p className="section-note">{t("patient.assistantDescription")}</p>
             <button
               className="primary-button"

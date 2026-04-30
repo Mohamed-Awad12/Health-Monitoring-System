@@ -1,17 +1,32 @@
 import { useEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiPreferences } from "../../hooks/useUiPreferences";
 import { getRoleHomePath } from "../../utils/roleRoutes";
 import PreferenceControls from "../common/PreferenceControls";
 
-export default function AppShell({ title, subtitle, actions, children }) {
+export default function AppShell({
+  title,
+  subtitle,
+  actions,
+  children,
+}) {
   const { user, logout } = useAuth();
   const { t } = useUiPreferences();
   const location = useLocation();
-  const navigate = useNavigate();
   const shellRef = useRef(null);
-  const isProfilePage = location.pathname === "/profile";
+  const primaryNavigation = user
+    ? [
+        {
+          href: getRoleHomePath(user.role),
+          label: t("common.dashboard"),
+        },
+        {
+          href: "/profile",
+          label: t("common.profile"),
+        },
+      ]
+    : [];
 
   useEffect(() => {
     const root = document.documentElement;
@@ -105,6 +120,9 @@ export default function AppShell({ title, subtitle, actions, children }) {
 
   return (
     <div className="app-shell" ref={shellRef}>
+      <a href="#main-content" className="skip-to-content">
+        {t("common.skipToContent") || "Skip to main content"}
+      </a>
       <header className="topbar">
         <div className="topbar-main">
           <div className="brand-badge">PO</div>
@@ -117,17 +135,6 @@ export default function AppShell({ title, subtitle, actions, children }) {
 
         <div className="topbar-actions">
           {actions}
-          {user ? (
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() =>
-                navigate(isProfilePage ? getRoleHomePath(user.role) : "/profile")
-              }
-            >
-              {isProfilePage ? t("common.dashboard") : t("common.profile")}
-            </button>
-          ) : null}
           <PreferenceControls />
           <div className="profile-chip">
             <div>
@@ -139,9 +146,32 @@ export default function AppShell({ title, subtitle, actions, children }) {
             {t("common.signOut")}
           </button>
         </div>
+
+        {primaryNavigation.length ? (
+          <nav className="workspace-nav" aria-label={t("common.workspaceNavigation")}>
+            <div className="workspace-nav-group">
+              <div className="workspace-nav-links">
+                {primaryNavigation.map((item) => (
+                  <Link
+                    key={item.href}
+                    className={
+                      location.pathname === item.href
+                        ? "workspace-nav-link active"
+                        : "workspace-nav-link"
+                    }
+                    aria-current={location.pathname === item.href ? "page" : undefined}
+                    to={item.href}
+                  >
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+            </div>
+          </div>
+          </nav>
+        ) : null}
       </header>
 
-      <main>{children}</main>
+      <main id="main-content">{children}</main>
     </div>
   );
 }
