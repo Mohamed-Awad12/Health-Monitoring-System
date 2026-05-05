@@ -11,6 +11,44 @@ import { getRoleHomePath } from "../utils/roleRoutes";
 
 gsap.registerPlugin(ScrollTrigger);
 
+const INTRO_SEEN_KEY = "ihealth-landing-intro-seen";
+const INTRO_SEEN_AT_KEY = "ihealth-landing-intro-seen-at";
+const INTRO_REPLAY_INTERVAL_MS = 10 * 60 * 60 * 1000;
+
+function resetIntroSeenFlag(storage) {
+  storage.setItem(INTRO_SEEN_KEY, "false");
+  storage.removeItem(INTRO_SEEN_AT_KEY);
+}
+
+function markIntroSeen(storage) {
+  storage.setItem(INTRO_SEEN_KEY, "true");
+  storage.setItem(INTRO_SEEN_AT_KEY, String(Date.now()));
+}
+
+function getIntroSeenRemainingMs(storage) {
+  const isSeen = storage.getItem(INTRO_SEEN_KEY) === "true";
+
+  if (!isSeen) {
+    return null;
+  }
+
+  const seenAt = Number(storage.getItem(INTRO_SEEN_AT_KEY));
+
+  if (!Number.isFinite(seenAt)) {
+    resetIntroSeenFlag(storage);
+    return null;
+  }
+
+  const remainingMs = INTRO_REPLAY_INTERVAL_MS - (Date.now() - seenAt);
+
+  if (remainingMs <= 0) {
+    resetIntroSeenFlag(storage);
+    return null;
+  }
+
+  return remainingMs;
+}
+
 function getInitialIntroPhase() {
   if (typeof window === "undefined") {
     return "hidden";
@@ -21,9 +59,7 @@ function getInitialIntroPhase() {
   }
 
   try {
-    return window.sessionStorage.getItem("ihealth-landing-intro-seen") === "true"
-      ? "hidden"
-      : "active";
+    return getIntroSeenRemainingMs(window.localStorage) === null ? "active" : "hidden";
   } catch {
     return "active";
   }
@@ -99,9 +135,35 @@ export default function LandingPage() {
   );
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    try {
+      const remainingMs = getIntroSeenRemainingMs(window.localStorage);
+
+      if (remainingMs === null) {
+        return undefined;
+      }
+
+      const resetTimer = window.setTimeout(() => {
+        resetIntroSeenFlag(window.localStorage);
+      }, remainingMs);
+
+      return () => {
+        window.clearTimeout(resetTimer);
+      };
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  useEffect(() => {
     if (introPhase !== "active" || typeof window === "undefined") {
       return undefined;
     }
+
+    let replayResetTimer = 0;
 
     const exitTimer = window.setTimeout(() => {
       setIntroPhase("exiting");
@@ -111,7 +173,10 @@ export default function LandingPage() {
       setIntroPhase("hidden");
 
       try {
-        window.sessionStorage.setItem("ihealth-landing-intro-seen", "true");
+        markIntroSeen(window.localStorage);
+        replayResetTimer = window.setTimeout(() => {
+          resetIntroSeenFlag(window.localStorage);
+        }, INTRO_REPLAY_INTERVAL_MS);
       } catch {
         // Ignore session storage failures and continue showing the site.
       }
@@ -120,6 +185,9 @@ export default function LandingPage() {
     return () => {
       window.clearTimeout(exitTimer);
       window.clearTimeout(doneTimer);
+      if (replayResetTimer) {
+        window.clearTimeout(replayResetTimer);
+      }
     };
   }, []);
 

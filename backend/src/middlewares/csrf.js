@@ -42,6 +42,13 @@ const requireCsrf = (req, _res, next) => {
     return;
   }
 
+  // Bearer-token requests do not rely on automatically attached browser
+  // cookies, so CSRF protection is not required for that auth mode.
+  if (req.authSource === "bearer") {
+    next();
+    return;
+  }
+
   const { cookieToken, headerToken } = readCsrfTokenFromRequest(req);
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {

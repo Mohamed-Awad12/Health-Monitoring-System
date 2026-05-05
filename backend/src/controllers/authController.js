@@ -43,7 +43,7 @@ const establishSession = (req, res, user) => {
   setAuthCookie(res, token);
 
   return {
-    token: null,
+    token,
     csrfToken,
   };
 };

@@ -37,6 +37,18 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let isMounted = true;
+    const hasStoredSessionHint = Boolean(
+      window.localStorage.getItem("pulse_token") ||
+      window.localStorage.getItem("pulse_user")
+    );
+
+    if (!hasStoredSessionHint) {
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
     setLoading(true);
 
     getCurrentUser()
