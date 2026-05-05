@@ -37,21 +37,56 @@ export default function IntroSplash({ exiting = false }) {
 
       <div className="intro-splash__core" aria-hidden="true">
         <div className="intro-splash__icon-shell">
-          <img
+          <svg
             className="intro-splash__icon"
-            src="/favicon.svg"
-            alt=""
-            width="112"
-            height="112"
-          />
+            viewBox="0 0 128 128"
+            role="presentation"
+          >
+            <defs>
+              <linearGradient id="intro-splash-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#22b9ff" />
+                <stop offset="100%" stopColor="#2867ff" />
+              </linearGradient>
+              <filter id="intro-splash-line-glow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="2.4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            <rect
+              x="16"
+              y="16"
+              width="96"
+              height="96"
+              rx="24"
+              fill="url(#intro-splash-gradient)"
+            />
+            <circle className="intro-splash__icon-person" cx="64" cy="42" r="10" />
+            <path
+              className="intro-splash__icon-line-base"
+              d="M28 76h21l11-20 11 34 12-23 8 9h17"
+              pathLength="100"
+            />
+            <path
+              className="intro-splash__icon-line-trace"
+              d="M28 76h21l11-20 11 34 12-23 8 9h17"
+              pathLength="100"
+              filter="url(#intro-splash-line-glow)"
+            />
+          </svg>
         </div>
 
         <div className="intro-splash__wordmark">
-          <span className="intro-splash__wordmark-accent">Pulse</span>
-          <span> Oximeter</span>
+          <span className="intro-splash__typed-text" aria-label="iHealth">
+            <span className="intro-splash__wordmark-accent">i</span>
+            <span>Health</span>
+          </span>
         </div>
 
-        <p className="intro-splash__tagline">SMART MONITORING, CONNECTED CARE</p>
+        <p className="intro-splash__tagline">YOUR HEALTH, CONNECTED</p>
       </div>
     </div>
   );

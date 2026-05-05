@@ -11,6 +11,24 @@ import { getRoleHomePath } from "../utils/roleRoutes";
 
 gsap.registerPlugin(ScrollTrigger);
 
+function getInitialIntroPhase() {
+  if (typeof window === "undefined") {
+    return "hidden";
+  }
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return "hidden";
+  }
+
+  try {
+    return window.sessionStorage.getItem("ihealth-landing-intro-seen") === "true"
+      ? "hidden"
+      : "active";
+  } catch {
+    return "active";
+  }
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -18,7 +36,7 @@ export default function LandingPage() {
   const sectionRefs = useRef([]);
   const progressRef = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [introPhase, setIntroPhase] = useState("hidden");
+  const [introPhase, setIntroPhase] = useState(getInitialIntroPhase);
 
   const primaryLabel = user ? "Open dashboard" : "Create account";
   const primaryPath = user ? getRoleHomePath(user.role) : "/register";
@@ -29,7 +47,7 @@ export default function LandingPage() {
           eyebrow: "Smarter Remote Care",
           title: "Clinical pulse monitoring with a sharper digital presence.",
           copy:
-            "Pulse delivers real-time oxygen and heart-rate monitoring in one streamlined experience that helps care teams detect risk earlier, act faster, and protect patients with confidence.",
+            "iHealth delivers real-time oxygen and heart-rate monitoring in one streamlined experience that helps care teams detect risk earlier, act faster, and protect patients with confidence.",
           meta: ["Real-time readings", "Remote monitoring", "Faster response"],
           primaryAction: {
             label: primaryLabel,
@@ -44,7 +62,7 @@ export default function LandingPage() {
           eyebrow: "Always-On Visibility",
           title: "See every oxygen shift the moment it matters.",
           copy:
-            "From home follow-up to critical escalation, Pulse keeps SpO2, pulse, and patient status in clear view so clinicians can respond before subtle changes become serious events.",
+            "From home follow-up to critical escalation, iHealth keeps SpO2, pulse, and patient status in clear view so clinicians can respond before subtle changes become serious events.",
           meta: ["Live SpO2", "Instant status", "Patient overview"],
         },
         {
@@ -58,14 +76,14 @@ export default function LandingPage() {
           eyebrow: "Built For Care Teams",
           title: "One connected experience for patients and clinicians.",
           copy:
-            "Pulse connects patients and clinicians in one reliable system for remote follow-up, clinical oversight, and coordinated care at scale.",
+            "iHealth connects patients and clinicians in one reliable system for remote follow-up, clinical oversight, and coordinated care at scale.",
           meta: ["Role-based access", "Connected workflow", "Scalable platform"],
         },
         {
           eyebrow: "Trusted Monitoring",
           title: "A product experience designed for confidence at every step.",
           copy:
-            "Pulse combines dependable monitoring, modern usability, and a strong clinical interface to create a product teams can trust and patients can rely on every day.",
+            "iHealth combines dependable monitoring, modern usability, and a strong clinical interface to create a product teams can trust and patients can rely on every day.",
           meta: ["Dependable monitoring", "Modern usability", "Clinical confidence"],
           primaryAction: {
             label: primaryLabel,
@@ -81,45 +99,23 @@ export default function LandingPage() {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (introPhase !== "active" || typeof window === "undefined") {
       return undefined;
     }
-
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    if (prefersReducedMotion) {
-      return undefined;
-    }
-
-    let hasSeenIntro = false;
-
-    try {
-      hasSeenIntro = window.sessionStorage.getItem("pulse-landing-intro-seen") === "true";
-    } catch {
-      hasSeenIntro = false;
-    }
-
-    if (hasSeenIntro) {
-      return undefined;
-    }
-
-    setIntroPhase("active");
 
     const exitTimer = window.setTimeout(() => {
       setIntroPhase("exiting");
-    }, 2600);
+    }, 3600);
 
     const doneTimer = window.setTimeout(() => {
       setIntroPhase("hidden");
 
       try {
-        window.sessionStorage.setItem("pulse-landing-intro-seen", "true");
+        window.sessionStorage.setItem("ihealth-landing-intro-seen", "true");
       } catch {
         // Ignore session storage failures and continue showing the site.
       }
-    }, 3400);
+    }, 4700);
 
     return () => {
       window.clearTimeout(exitTimer);
@@ -128,6 +124,10 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
+    if (introPhase !== "hidden") {
+      return undefined;
+    }
+
     const scroller = containerRef.current;
     const sections = sectionRefs.current.filter(Boolean);
 
@@ -228,7 +228,7 @@ export default function LandingPage() {
       ctx.revert();
       progressRef.current = 0;
     };
-  }, [slides.length]);
+  }, [introPhase, slides.length]);
 
   const scrollToSlide = (index) => {
     const target = sectionRefs.current[index];
@@ -245,12 +245,15 @@ export default function LandingPage() {
 
   const isIntroVisible = introPhase !== "hidden";
   const isIntroExiting = introPhase === "exiting";
+  const shouldRenderDynamicBackground = introPhase !== "active";
 
   return (
     <div className={isIntroVisible ? "slides-shell is-intro-active" : "slides-shell"}>
       {isIntroVisible ? <IntroSplash exiting={isIntroExiting} /> : null}
 
-      <SlidesBackground progressRef={progressRef} />
+      {shouldRenderDynamicBackground ? (
+        <SlidesBackground progressRef={progressRef} />
+      ) : null}
 
       <header className="slides-topbar">
         <button
@@ -259,7 +262,7 @@ export default function LandingPage() {
           onClick={() => scrollToSlide(0)}
         >
           <span className="slides-brand-mark">P</span>
-          <span>Pulse Oximeter</span>
+          <span>iHealth</span>
         </button>
 
         <div className="slides-topbar-actions">

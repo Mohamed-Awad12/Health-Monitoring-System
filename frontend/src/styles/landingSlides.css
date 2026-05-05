@@ -19,10 +19,11 @@
     radial-gradient(circle at 50% 44%, rgba(31, 120, 255, 0.16), transparent 18%),
     radial-gradient(circle at 50% 50%, rgba(7, 16, 29, 0.7), transparent 42%),
     linear-gradient(180deg, rgba(3, 7, 16, 0.98), rgba(3, 7, 16, 1));
+  will-change: opacity, transform;
   transition:
-    opacity 680ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 680ms cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 680ms step-end;
+    opacity 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 920ms step-end;
 }
 
 .intro-splash.is-exiting {
@@ -54,7 +55,7 @@
   border-radius: 50%;
   filter: blur(24px);
   opacity: 0.5;
-  animation: intro-halo-drift 6.4s ease-in-out infinite alternate;
+  animation: intro-halo-drift 8.2s ease-in-out infinite alternate;
 }
 
 .intro-splash__halo--primary {
@@ -65,7 +66,7 @@
 .intro-splash__halo--secondary {
   background: radial-gradient(circle, rgba(82, 235, 200, 0.16), transparent 70%);
   transform: translate(10rem, 7rem);
-  animation-duration: 7.2s;
+  animation-duration: 9.1s;
 }
 
 .intro-splash__particle {
@@ -79,7 +80,7 @@
   box-shadow: 0 0 16px rgba(86, 214, 255, 0.34);
   opacity: 0;
   animation:
-    intro-particle-enter 720ms ease-out forwards var(--particle-delay),
+    intro-particle-enter 920ms ease-out forwards var(--particle-delay),
     intro-particle-drift var(--particle-duration) ease-in-out infinite var(--particle-delay);
 }
 
@@ -90,6 +91,7 @@
   justify-items: center;
   gap: 1.1rem;
   text-align: center;
+  will-change: transform, opacity;
 }
 
 .intro-splash__icon-shell {
@@ -99,8 +101,8 @@
   width: clamp(7rem, 18vw, 9.5rem);
   aspect-ratio: 1;
   animation:
-    intro-icon-enter 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
-    intro-icon-float 3.8s ease-in-out infinite 0.72s;
+    intro-icon-enter 980ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
+    intro-icon-float 5.1s ease-in-out infinite 0.98s;
 }
 
 .intro-splash__icon-shell::before,
@@ -122,7 +124,7 @@
   border-radius: 50%;
   border: 1px solid rgba(110, 222, 255, 0.14);
   opacity: 0;
-  animation: intro-ring 2s ease-out infinite 0.9s;
+  animation: intro-ring 2.7s ease-out infinite 1.15s;
 }
 
 .intro-splash__icon {
@@ -132,14 +134,37 @@
   box-shadow:
     0 22px 72px rgba(21, 132, 255, 0.32),
     0 0 24px rgba(55, 181, 255, 0.28);
+  will-change: transform, opacity;
+}
+
+.intro-splash__icon-person {
+  fill: rgba(255, 255, 255, 0.98);
+  animation: intro-heartbeat 2.2s ease-in-out infinite 0.65s;
+  transform-origin: center;
+}
+
+.intro-splash__icon-line-base,
+.intro-splash__icon-line-trace {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 8;
+}
+
+.intro-splash__icon-line-base {
+  stroke: rgba(255, 255, 255, 0.28);
+}
+
+.intro-splash__icon-line-trace {
+  stroke: rgba(255, 255, 255, 0.98);
+  stroke-dasharray: 30 100;
+  stroke-dashoffset: 130;
+  animation: intro-pulse-trace 2.2s linear infinite 0.65s;
 }
 
 .intro-splash__wordmark {
   display: inline-flex;
-  align-items: baseline;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 0.12em;
   margin: 0;
   font-size: clamp(2.2rem, 7vw, 4.9rem);
   font-weight: 800;
@@ -147,19 +172,18 @@
   color: #f8fbff;
 }
 
-.intro-splash__wordmark span {
+.intro-splash__typed-text {
   display: inline-block;
   opacity: 0;
-  animation: intro-wordmark-reveal 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(0 100% 0 0);
+  will-change: clip-path, opacity, transform;
+  animation: intro-type-smooth 1.55s cubic-bezier(0.16, 1, 0.3, 1) forwards 0.72s;
 }
 
 .intro-splash__wordmark-accent {
   color: #2f9bff;
-  animation-delay: 0.48s;
-}
-
-.intro-splash__wordmark span:last-child {
-  animation-delay: 0.62s;
 }
 
 .intro-splash__tagline {
@@ -170,16 +194,15 @@
   text-transform: uppercase;
   color: rgba(215, 235, 255, 0.74);
   opacity: 0;
-  animation: intro-tagline-reveal 700ms ease-out forwards 1s;
+  animation: intro-tagline-reveal 980ms ease-out forwards 1.55s;
 }
 
 .slides-topbar,
 .slides-nav,
 .slides-page {
   transition:
-    opacity 720ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 720ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 720ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 920ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 920ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .slides-shell.is-intro-active .slides-topbar,
@@ -191,15 +214,13 @@
 .slides-shell.is-intro-active .slides-topbar,
 .slides-shell.is-intro-active .slides-nav {
   opacity: 0;
-  transform: translateY(1.25rem);
-  filter: blur(10px);
+  transform: translateY(0.7rem);
 }
 
 .slides-shell.is-intro-active .slides-page {
   overflow-y: hidden;
-  opacity: 0.02;
-  transform: scale(1.02);
-  filter: blur(16px);
+  opacity: 0;
+  transform: scale(1.01);
 }
 
 .slides-background,
@@ -513,16 +534,16 @@
   }
 }
 
-@keyframes intro-wordmark-reveal {
+@keyframes intro-type-smooth {
   from {
     opacity: 0;
-    transform: translateY(1rem);
-    clip-path: inset(0 0 100% 0);
+    clip-path: inset(0 100% 0 0);
+    transform: translateY(0.35rem);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
     clip-path: inset(0 0 0 0);
+    transform: translateY(0);
   }
 }
 
@@ -571,6 +592,29 @@
   }
   50% {
     transform: translate3d(0.7rem, -0.9rem, 0);
+  }
+}
+
+@keyframes intro-pulse-trace {
+  from {
+    stroke-dashoffset: 130;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes intro-heartbeat {
+  0%,
+  32%,
+  100% {
+    transform: scale(1);
+  }
+  18% {
+    transform: scale(1.08);
+  }
+  24% {
+    transform: scale(0.96);
   }
 }
 
@@ -626,7 +670,6 @@
 
 @media (max-width: 720px) {
   .intro-splash__wordmark {
-    max-width: 12ch;
     line-height: 0.94;
   }
 
@@ -671,10 +714,17 @@
   .intro-splash__halo,
   .intro-splash__particle,
   .intro-splash__icon-shell,
+  .intro-splash__icon-person,
+  .intro-splash__icon-line-trace,
   .intro-splash__icon-shell::after,
-  .intro-splash__wordmark span,
+  .intro-splash__typed-text,
   .intro-splash__tagline {
     animation: none;
+  }
+
+  .intro-splash__typed-text {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
   }
 
   .slides-page {
