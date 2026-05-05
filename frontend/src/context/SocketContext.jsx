@@ -48,11 +48,15 @@ const resolveSocketUrl = () => {
 };
 
 export function SocketProvider({ children }) {
-  const { token } = useAuth();
+  const { token, user, loading } = useAuth();
   const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    if (!token) {
+    if (loading) {
+      return undefined;
+    }
+
+    if (!user && !token) {
       setSocket((currentSocket) => {
         currentSocket?.disconnect();
         return null;
@@ -61,8 +65,9 @@ export function SocketProvider({ children }) {
     }
 
     const nextSocket = io(resolveSocketUrl(), {
-      auth: { token },
+      auth: token ? { token } : undefined,
       autoConnect: false,
+      withCredentials: true,
     });
 
     // Delay connect by a tick so React StrictMode dev remount cleanup
@@ -78,7 +83,7 @@ export function SocketProvider({ children }) {
       nextSocket.disconnect();
       setSocket(null);
     };
-  }, [token]);
+  }, [loading, token, user]);
 
   return (
     <SocketContext.Provider value={{ socket }}>

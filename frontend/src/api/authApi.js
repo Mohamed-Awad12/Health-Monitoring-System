@@ -11,6 +11,7 @@ export const registerDoctor = (payload) => {
   formData.append("password", payload.password);
   formData.append("specialty", payload.specialty || "");
   formData.append("phone", payload.phone || "");
+  formData.append("captchaToken", payload.captchaToken || "");
 
   if (payload.verificationDocument) {
     formData.append("verificationDocument", payload.verificationDocument);
@@ -24,6 +25,8 @@ export const registerDoctor = (payload) => {
 };
 
 export const login = (payload) => api.post("/auth/login", payload);
+
+export const getCsrfToken = () => api.get("/auth/csrf-token");
 
 export const verifyEmailOtp = (payload) =>
   api.post("/auth/verify-email", payload);
@@ -50,6 +53,8 @@ export const resetPassword = (tokenOrPayload, maybePassword) => {
 };
 
 export const getCurrentUser = () => api.get("/auth/me");
+
+export const logout = () => api.post("/auth/logout");
 
 export const updateCurrentUserProfile = (payload) =>
   api.patch("/auth/me", payload);

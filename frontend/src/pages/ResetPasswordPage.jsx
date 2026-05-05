@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { forgotPassword, resetPassword } from "../api/authApi";
+import CaptchaField, { captchaIsRequired } from "../components/common/CaptchaField";
 import PreferenceControls from "../components/common/PreferenceControls";
 import "../styles/auth-neo.css";
 
@@ -23,6 +24,7 @@ const ResetPasswordPage = () => {
       : ""
   );
   const [resending, setResending] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,12 +45,17 @@ const ResetPasswordPage = () => {
 
     try {
       if (isTokenFlow) {
-        await resetPassword(token, password);
+        await resetPassword({
+          token,
+          password,
+          captchaToken,
+        });
       } else {
         await resetPassword({
           email: normalizedEmail,
           otp: normalizedOtp,
           password,
+          captchaToken,
         });
       }
 
@@ -73,7 +80,10 @@ const ResetPasswordPage = () => {
     setMessage("");
 
     try {
-      const { data } = await forgotPassword(normalizedEmail);
+      const { data } = await forgotPassword({
+        email: normalizedEmail,
+        captchaToken,
+      });
       setMessage(data?.message || "A new OTP has been sent to your email.");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to resend OTP");
@@ -161,12 +171,13 @@ const ResetPasswordPage = () => {
               minLength={8}
             />
           </div>
+          <CaptchaField onTokenChange={setCaptchaToken} />
 
           {isTokenFlow ? (
             <button
               type="submit"
               className="auth-neo-submit-button"
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit || loading || (captchaIsRequired() && !captchaToken)}
             >
               {loading ? "Resetting..." : "Reset Password"}
             </button>
@@ -175,7 +186,7 @@ const ResetPasswordPage = () => {
               <button
                 type="submit"
                 className="auth-neo-submit-button"
-                disabled={!canSubmit || loading}
+                disabled={!canSubmit || loading || (captchaIsRequired() && !captchaToken)}
               >
                 {loading ? "Resetting..." : "Reset Password"}
               </button>
@@ -183,7 +194,7 @@ const ResetPasswordPage = () => {
                 type="button"
                 className="auth-otp-resend-button"
                 onClick={handleResendOtp}
-                disabled={resending}
+                disabled={resending || (captchaIsRequired() && !captchaToken)}
               >
                 {resending ? "Resending..." : "Resend OTP"}
               </button>

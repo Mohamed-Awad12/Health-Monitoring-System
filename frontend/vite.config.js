@@ -16,6 +16,7 @@ const allowedHosts = Array.from(
 
 export default defineConfig({
   plugins: [react()],
+  base: process.env.VITE_CDN_BASE_URL?.trim() || "/",
   server: {
     host: true,
     port: 5173,
@@ -25,5 +26,35 @@ export default defineConfig({
     host: true,
     port: Number(process.env.PORT) || 4173,
     allowedHosts,
+  },
+  build: {
+    manifest: true,
+    cssCodeSplit: true,
+    assetsInlineLimit: 4096,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (id.includes("recharts")) {
+            return "charts";
+          }
+
+          if (id.includes("framer-motion") || id.includes("gsap") || id.includes("animejs")) {
+            return "motion";
+          }
+
+          if (id.includes("socket.io-client")) {
+            return "socket";
+          }
+
+          return undefined;
+        },
+      },
+    },
   },
 });

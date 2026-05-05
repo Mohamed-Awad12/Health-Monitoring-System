@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import CaptchaField, { captchaIsRequired } from "../components/common/CaptchaField";
 import PreferenceControls from "../components/common/PreferenceControls";
 import { useAuth } from "../hooks/useAuth";
 import { useUiPreferences } from "../hooks/useUiPreferences";
@@ -25,6 +26,7 @@ export default function LoginPage() {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   useEffect(() => {
     if (!emailFromQuery) {
@@ -47,6 +49,7 @@ export default function LoginPage() {
     const payload = {
       email: formState.email.trim().toLowerCase(),
       password: formState.password,
+      captchaToken,
     };
 
     if (!payload.email || !payload.password) {
@@ -152,10 +155,11 @@ export default function LoginPage() {
               required
             />
           </div>
+          <CaptchaField onTokenChange={setCaptchaToken} />
           <button
             type="submit"
             className="auth-neo-submit-button"
-            disabled={!canSubmit || submitting}
+            disabled={!canSubmit || submitting || (captchaIsRequired() && !captchaToken)}
           >
             {submitting ? t("common.signingIn") : t("common.signIn")}
           </button>

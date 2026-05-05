@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import CaptchaField, { captchaIsRequired } from "../components/common/CaptchaField";
 import PreferenceControls from "../components/common/PreferenceControls";
 import { useAuth } from "../hooks/useAuth";
 import { useUiPreferences } from "../hooks/useUiPreferences";
@@ -28,6 +29,7 @@ export default function RegisterPage() {
   const [verificationDocument, setVerificationDocument] = useState(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   if (user) {
     return <Navigate to={getRoleHomePath(user.role)} replace />;
@@ -38,6 +40,7 @@ export default function RegisterPage() {
     setError("");
     setConfirmPassword("");
     setVerificationDocument(null);
+    setCaptchaToken("");
     setFormState(
       nextRole === "doctor" ? defaultDoctorState : defaultPatientState
     );
@@ -53,6 +56,7 @@ export default function RegisterPage() {
       phone: formState.phone.trim(),
       specialty: (formState.specialty || "").trim(),
       verificationDocument,
+      captchaToken,
     };
 
     if (payload.password !== confirmPassword) {
@@ -269,11 +273,12 @@ export default function RegisterPage() {
               required
             />
           </div>
+          <CaptchaField onTokenChange={setCaptchaToken} />
 
           <button
             type="submit"
             className="auth-neo-submit-button"
-            disabled={!canSubmit || submitting}
+            disabled={!canSubmit || submitting || (captchaIsRequired() && !captchaToken)}
           >
             {submitting
               ? t("common.creatingAccount")

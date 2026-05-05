@@ -1,20 +1,59 @@
 const User = require("../models/User");
+const { logSecurityEvent } = require("../services/securityEventLogger");
 const ApiError = require("../utils/ApiError");
+const { parseCookies } = require("../utils/cookies");
 const catchAsync = require("../utils/catchAsync");
+const env = require("../config/env");
 const { verifyToken } = require("../utils/jwt");
 
-const authenticate = catchAsync(async (req, _res, next) => {
+const getAccessToken = (req) => {
   const authorization = req.headers.authorization || "";
 
-  if (!authorization.startsWith("Bearer ")) {
+  if (authorization.startsWith("Bearer ")) {
+    return {
+      token: authorization.replace("Bearer ", "").trim(),
+      source: "bearer",
+    };
+  }
+
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies[env.AUTH_COOKIE_NAME];
+
+  if (!token) {
+    return {
+      token: "",
+      source: null,
+    };
+  }
+
+  return {
+    token,
+    source: "cookie",
+  };
+};
+
+const authenticate = catchAsync(async (req, _res, next) => {
+  const { token, source } = getAccessToken(req);
+
+  if (!token) {
+    logSecurityEvent({
+      severity: "warning",
+      type: "missing_authentication_token",
+      req,
+    });
     throw new ApiError(401, "Authentication required");
   }
 
-  const token = authorization.replace("Bearer ", "").trim();
   const decoded = verifyToken(token);
   const user = await User.findById(decoded.sub).select("-password");
 
   if (!user) {
+    logSecurityEvent({
+      severity: "warning",
+      type: "invalid_session_user_missing",
+      req,
+      details: { source },
+    });
     throw new ApiError(401, "Invalid session");
   }
 
@@ -23,6 +62,7 @@ const authenticate = catchAsync(async (req, _res, next) => {
   }
 
   req.user = user;
+  req.authSource = source;
   next();
 });
 
@@ -61,4 +101,5 @@ module.exports = {
   authenticate,
   authorize,
   ensureApprovedDoctor,
+  getAccessToken,
 };

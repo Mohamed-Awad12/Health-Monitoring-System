@@ -265,6 +265,25 @@
   transform: none;
 }
 
+.captcha-shell {
+  margin-bottom: 1rem;
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+}
+
+.captcha-widget {
+  width: 100%;
+  min-height: 78px;
+  display: grid;
+  justify-content: center;
+}
+
+.captcha-error {
+  margin-bottom: 0;
+  width: 100%;
+}
+
 .auth-role-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

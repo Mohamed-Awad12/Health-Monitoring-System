@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import {
   acknowledgePatientAlert,
   assignDoctor,
@@ -10,7 +10,6 @@ import {
   linkDevice,
   unassignDoctor,
 } from "../api/patientApi";
-import VitalChart from "../components/charts/VitalChart";
 import AppShell from "../components/layout/AppShell";
 import AlertList from "../components/ui/AlertList";
 import EmptyState from "../components/ui/EmptyState";
@@ -36,6 +35,7 @@ const LOW_SPO2_THRESHOLD = 90;
 const LOW_BPM_THRESHOLD = 50;
 const HIGH_BPM_THRESHOLD = 120;
 const DOCTOR_PAGE_LIMIT = 12;
+const VitalChart = lazy(() => import("../components/charts/VitalChart"));
 
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);
@@ -428,7 +428,6 @@ export default function PatientDashboardPage() {
   const deniedCareTeam = dashboard?.careTeam?.lastDenied;
   const hasCareTeam =
     activeCareTeam.length > 0 || pendingCareTeam.length > 0 || Boolean(deniedCareTeam);
-  const hasDoctorSearchPrefix = doctorSearch.trim().length > 0;
   const getTeamPreviewLabel = (relations, emptyLabel) => {
     if (!relations.length) {
       return emptyLabel;
@@ -445,6 +444,11 @@ export default function PatientDashboardPage() {
       count: relations.length - 1,
     });
   };
+  const chartFallback = (
+    <div className="chart-wrapper live-chart screen-center" aria-hidden="true">
+      <div className="loading-dot" />
+    </div>
+  );
 
   return (
     <AppShell
@@ -528,7 +532,9 @@ export default function PatientDashboardPage() {
                   />
                 </div>
 
-                <VitalChart data={dashboard?.series} />
+                <Suspense fallback={chartFallback}>
+                  <VitalChart data={dashboard?.series} />
+                </Suspense>
               </>
             )}
           </SectionCard>
@@ -727,103 +733,96 @@ export default function PatientDashboardPage() {
 
             {doctorError ? <div className="form-error">{doctorError}</div> : null}
 
-            {!hasDoctorSearchPrefix ? (
-              <div className="search-idle-state" aria-hidden="true">
-                <div className="search-idle-line" />
-                <div className="search-idle-dots">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              </div>
-            ) : doctorLoading && !doctors.length ? (
-              <DirectorySkeleton label={t("patient.loadingDoctorsDirectory")} count={3} />
-            ) : doctors.length ? (
-              <>
-                <div className="doctor-directory">
-                  {doctors.map((doctor) => {
-                    const assignment = doctor.assignment;
-                    const isDisabled =
-                      assignment?.status === "pending" || assignment?.status === "active";
-                    const isSubmitting = assigningDoctorId === doctor._id;
+            {doctorSearch.trim() ? (
+              doctorLoading && !doctors.length ? (
+                <DirectorySkeleton label={t("patient.loadingDoctorsDirectory")} count={3} />
+              ) : doctors.length ? (
+                <>
+                  <div className="doctor-directory">
+                    {doctors.map((doctor) => {
+                      const assignment = doctor.assignment;
+                      const isDisabled =
+                        assignment?.status === "pending" || assignment?.status === "active";
+                      const isSubmitting = assigningDoctorId === doctor._id;
 
-                    return (
-                      <article key={doctor._id} className="doctor-option-card">
-                        <div className="doctor-option-top">
-                          <div>
-                            <strong>{doctor.name}</strong>
-                            <span>{doctor.specialty || t("common.doctor")}</span>
+                      return (
+                        <article key={doctor._id} className="doctor-option-card">
+                          <div className="doctor-option-top">
+                            <div>
+                              <strong>{doctor.name}</strong>
+                              <span>{doctor.specialty || t("common.doctor")}</span>
+                            </div>
+                            {assignment ? <StatusPill status={assignment.status} /> : null}
                           </div>
-                          {assignment ? <StatusPill status={assignment.status} /> : null}
-                        </div>
 
-                        <small>{doctor.email}</small>
-                        <p>{getAssignmentMeta(assignment)}</p>
+                          <small>{doctor.email}</small>
+                          <p>{getAssignmentMeta(assignment)}</p>
 
-                        <div className="button-row">
-                          <button
-                            className="primary-button"
-                            type="button"
-                            disabled={
-                              isDisabled || isSubmitting || Boolean(unassigningAssignmentId)
-                            }
-                            onClick={() => handleAssignDoctor(doctor._id)}
-                          >
-                            {isSubmitting
-                              ? t("common.loading")
-                              : getDoctorButtonLabel(assignment)}
-                          </button>
-
-                          {assignment?.status === "active" ||
-                          assignment?.status === "pending" ? (
+                          <div className="button-row">
                             <button
-                              className="ghost-button danger"
+                              className="primary-button"
                               type="button"
                               disabled={
-                                isSubmitting || unassigningAssignmentId === assignment.id
+                                isDisabled || isSubmitting || Boolean(unassigningAssignmentId)
                               }
-                              onClick={() => handleUnassignDoctor(assignment.id)}
+                              onClick={() => handleAssignDoctor(doctor._id)}
                             >
-                              {unassigningAssignmentId === assignment.id
+                              {isSubmitting
                                 ? t("common.loading")
-                                : assignment.status === "pending"
-                                  ? t("patient.cancelDoctorRequest")
-                                  : t("patient.unassignDoctor")}
+                                : getDoctorButtonLabel(assignment)}
                             </button>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
 
-                <div className="doctor-directory-footer">
-                  <small>
-                    {t("patient.doctorResultsCount", {
-                      shown: doctors.length,
-                      total: doctorTotal,
+                            {assignment?.status === "active" ||
+                            assignment?.status === "pending" ? (
+                              <button
+                                className="ghost-button danger"
+                                type="button"
+                                disabled={
+                                  isSubmitting || unassigningAssignmentId === assignment.id
+                                }
+                                onClick={() => handleUnassignDoctor(assignment.id)}
+                              >
+                                {unassigningAssignmentId === assignment.id
+                                  ? t("common.loading")
+                                  : assignment.status === "pending"
+                                    ? t("patient.cancelDoctorRequest")
+                                    : t("patient.unassignDoctor")}
+                              </button>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
                     })}
-                  </small>
+                  </div>
 
-                  {doctorHasNextPage ? (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      disabled={doctorLoading}
-                      onClick={handleLoadMoreDoctors}
-                    >
-                      {doctorLoading ? t("common.loading") : t("patient.loadMoreDoctors")}
-                    </button>
-                  ) : null}
-                </div>
-              </>
-            ) : (
-              <EmptyState
-                icon={FiSearch}
-                title={t("patient.noDoctorsFoundTitle")}
-                description={t("patient.noDoctorsFoundDescription")}
-              />
-            )}
+                  <div className="doctor-directory-footer">
+                    <small>
+                      {t("patient.doctorResultsCount", {
+                        shown: doctors.length,
+                        total: doctorTotal,
+                      })}
+                    </small>
+
+                    {doctorHasNextPage ? (
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={doctorLoading}
+                        onClick={handleLoadMoreDoctors}
+                      >
+                        {doctorLoading ? t("common.loading") : t("patient.loadMoreDoctors")}
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  icon={FiSearch}
+                  title={t("patient.noDoctorsFoundTitle")}
+                  description={t("patient.noDoctorsFoundDescription")}
+                />
+              )
+            ) : null}
           </SectionCard>
 
           <SectionCard

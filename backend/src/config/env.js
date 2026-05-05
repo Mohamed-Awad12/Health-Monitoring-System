@@ -3,6 +3,18 @@ const { z } = require("zod");
 
 dotenv.config();
 
+const booleanSchema = z.preprocess((value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return /^(1|true|yes|on)$/i.test(value.trim());
+  }
+
+  return false;
+}, z.boolean());
+
 const webhookUrlSchema = z.string().url().refine((value) => value.startsWith("https://"), {
   message: "EMAIL_WEBHOOK_URL must use https://",
 });
@@ -14,10 +26,35 @@ const envSchema = z
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
     MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
     JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
     JWT_EXPIRES_IN: z.string().default("7d"),
     CORS_ORIGIN: z.string().default("http://localhost:5173"),
+    ENFORCE_HTTPS: booleanSchema.default(false),
+    AUTH_COOKIE_NAME: z.string().trim().min(1).default("pulse_session"),
+    AUTH_COOKIE_DOMAIN: z.string().trim().optional().or(z.literal("")),
+    AUTH_COOKIE_SAME_SITE: z.enum(["strict", "lax", "none"]).default("lax"),
+    AUTH_COOKIE_SECURE: booleanSchema.default(false),
+    CSRF_COOKIE_NAME: z.string().trim().min(1).default("pulse_csrf"),
+    CSRF_HEADER_NAME: z.string().trim().min(1).default("x-csrf-token"),
+    SECURITY_LOG_FILE: z
+      .string()
+      .trim()
+      .default("logs/security-events.log"),
+    PATIENT_DASHBOARD_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(15),
+    READING_FEED_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(10),
+    DIRECTORY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(60),
+    DOCTOR_PATIENTS_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(15),
+    GLOBAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1000),
+    AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+    AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
+    AUTH_ACCOUNT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(8),
+    AUTH_WRITE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(90),
+    AUTH_WRITE_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(1),
+    CAPTCHA_PROVIDER: z.enum(["hcaptcha", "recaptcha"]).optional().or(z.literal("")),
+    CAPTCHA_SECRET: z.string().trim().optional().or(z.literal("")),
+    CAPTCHA_SITEVERIFY_URL: z.string().trim().url().optional().or(z.literal("")),
     PATIENT_LOW_SPO2_THRESHOLD: z.coerce.number().default(90),
     PATIENT_LOW_BPM_THRESHOLD: z.coerce.number().default(50),
     PATIENT_HIGH_BPM_THRESHOLD: z.coerce.number().default(120),
@@ -49,4 +86,11 @@ if (!parsed.success) {
   throw new Error(`Invalid environment configuration: ${issues}`);
 }
 
-module.exports = parsed.data;
+const config = parsed.data;
+
+config.ENFORCE_HTTPS =
+  config.ENFORCE_HTTPS || config.NODE_ENV === "production";
+config.AUTH_COOKIE_SECURE =
+  config.AUTH_COOKIE_SECURE || config.NODE_ENV === "production";
+
+module.exports = config;

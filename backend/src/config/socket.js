@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const env = require("./env");
 const User = require("../models/User");
+const { parseCookies } = require("../utils/cookies");
 const { verifyToken } = require("../utils/jwt");
 
 let io;
@@ -42,7 +43,10 @@ const initializeSocket = (httpServer) => {
 
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth?.token;
+      const cookieToken = parseCookies(socket.handshake.headers.cookie)[
+        env.AUTH_COOKIE_NAME
+      ];
+      const token = socket.handshake.auth?.token || cookieToken;
 
       if (!token) {
         return next(new Error("Authentication token is required"));

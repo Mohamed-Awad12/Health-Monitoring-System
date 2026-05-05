@@ -4,12 +4,15 @@
   "private": true,
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "slides"
   ],
   "scripts": {
     "run:project": "bash ./scripts/run-project.sh",
     "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:slides": "npm run dev -w slides",
     "build": "npm run build -w frontend",
+    "build:slides": "npm run build -w slides",
     "start": "npm run start -w backend"
   },
   "devDependencies": {

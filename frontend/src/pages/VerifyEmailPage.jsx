@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { resendVerificationOtp, verifyEmailOtp } from "../api/authApi";
+import CaptchaField, { captchaIsRequired } from "../components/common/CaptchaField";
 import PreferenceControls from "../components/common/PreferenceControls";
 import { useAuth } from "../hooks/useAuth";
 import { useUiPreferences } from "../hooks/useUiPreferences";
@@ -46,6 +47,7 @@ export default function VerifyEmailPage() {
   const [message, setMessage] = useState(
     sent ? "A 6-digit OTP has been sent to your email." : ""
   );
+  const [captchaToken, setCaptchaToken] = useState("");
 
   if (user) {
     return <Navigate to={getRoleHomePath(user.role)} replace />;
@@ -66,7 +68,7 @@ export default function VerifyEmailPage() {
     setMessage("");
 
     try {
-      await verifyEmailOtp({ email, otp });
+      await verifyEmailOtp({ email, otp, captchaToken });
       navigate(`/login?verified=success&email=${encodeURIComponent(email)}`, {
         replace: true,
       });
@@ -92,7 +94,7 @@ export default function VerifyEmailPage() {
     setMessage("");
 
     try {
-      const { data } = await resendVerificationOtp({ email });
+      const { data } = await resendVerificationOtp({ email, captchaToken });
       setMessage(data?.message || "Verification OTP sent.");
     } catch (requestError) {
       setError(
@@ -158,12 +160,18 @@ export default function VerifyEmailPage() {
               required
             />
           </div>
+          <CaptchaField onTokenChange={setCaptchaToken} />
 
           <div className="auth-otp-actions">
             <button
               type="submit"
               className="auth-neo-submit-button"
-              disabled={!formState.email.trim() || !formState.otp.trim() || submitting}
+              disabled={
+                !formState.email.trim() ||
+                !formState.otp.trim() ||
+                submitting ||
+                (captchaIsRequired() && !captchaToken)
+              }
             >
               {submitting ? "Verifying..." : "Verify OTP"}
             </button>
@@ -171,7 +179,7 @@ export default function VerifyEmailPage() {
               type="button"
               className="auth-otp-resend-button"
               onClick={handleResendOtp}
-              disabled={resending}
+              disabled={resending || (captchaIsRequired() && !captchaToken)}
             >
               {resending ? "Resending..." : "Resend OTP"}
             </button>

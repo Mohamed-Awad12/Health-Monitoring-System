@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { optionalPlainTextString } = require("./common");
 
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid identifier");
 const rangeSchema = z.enum(["day", "week", "month"]).default("day");
@@ -6,7 +7,7 @@ const alertStatusSchema = z.enum(["open", "acknowledged", "all"]).default("all")
 
 const linkDeviceSchema = z.object({
   deviceSecretId: z.string().trim().min(4).max(120),
-  label: z.string().trim().max(80).optional().or(z.literal("")),
+  label: optionalPlainTextString("label", 80),
 });
 
 const assignDoctorSchema = z.object({

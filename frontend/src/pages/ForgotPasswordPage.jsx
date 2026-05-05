@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { forgotPassword } from "../api/authApi";
+import CaptchaField, { captchaIsRequired } from "../components/common/CaptchaField";
 import PreferenceControls from "../components/common/PreferenceControls";
 import "../styles/auth-neo.css";
 
@@ -9,6 +10,7 @@ const ForgotPasswordPage = () => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,7 +24,7 @@ const ForgotPasswordPage = () => {
     setError(null);
 
     try {
-      await forgotPassword(normalizedEmail);
+      await forgotPassword({ email: normalizedEmail, captchaToken });
       navigate(
         `/reset-password?sent=1&email=${encodeURIComponent(normalizedEmail)}`,
         { replace: true }
@@ -62,11 +64,12 @@ const ForgotPasswordPage = () => {
               required
             />
           </div>
+          <CaptchaField onTokenChange={setCaptchaToken} />
 
           <button
             type="submit"
             className="auth-neo-submit-button"
-            disabled={!email.trim() || loading}
+            disabled={!email.trim() || loading || (captchaIsRequired() && !captchaToken)}
           >
             {loading ? "Sending..." : "Send OTP"}
           </button>

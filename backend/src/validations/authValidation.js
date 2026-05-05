@@ -1,8 +1,13 @@
 const { z } = require("zod");
+const {
+  captchaTokenSchema,
+  optionalPlainTextString,
+  plainTextString,
+} = require("./common");
 
 const passwordSchema = z.string().min(8).max(128);
 const emailSchema = z.string().trim().toLowerCase().email();
-const nameSchema = z.string().trim().min(2).max(80);
+const nameSchema = plainTextString("name", { min: 2, max: 80 });
 const otpSchema = z
   .string()
   .trim()
@@ -12,34 +17,38 @@ const registerPatientSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
-  phone: z.string().trim().max(25).optional().or(z.literal("")),
+  phone: optionalPlainTextString("phone", 25),
+  captchaToken: captchaTokenSchema,
 });
 
 const registerDoctorSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
-  specialty: z.string().trim().min(2).max(120),
-  phone: z.string().trim().max(25).optional().or(z.literal("")),
+  specialty: plainTextString("specialty", { min: 2, max: 120 }),
+  phone: optionalPlainTextString("phone", 25),
+  captchaToken: captchaTokenSchema,
 });
 
 const registerAdminBootstrapSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
-  phone: z.string().trim().max(25).optional().or(z.literal("")),
+  phone: optionalPlainTextString("phone", 25),
+  captchaToken: captchaTokenSchema,
 });
 
 const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1),
+  captchaToken: captchaTokenSchema,
 });
 
 const updateProfileSchema = z
   .object({
     name: nameSchema.optional(),
     email: emailSchema.optional(),
-    phone: z.string().trim().max(25).optional().or(z.literal("")),
+    phone: optionalPlainTextString("phone", 25),
   })
   .refine((payload) => Object.keys(payload).length > 0, {
     message: "At least one field is required",
@@ -64,26 +73,31 @@ const deleteAccountSchema = z.object({
 const verifyEmailSchema = z.object({
   email: emailSchema,
   otp: otpSchema,
+  captchaToken: captchaTokenSchema,
 });
 
 const resendVerificationEmailSchema = z.object({
   email: emailSchema,
+  captchaToken: captchaTokenSchema,
 });
 
 
 const forgotPasswordSchema = z.object({
   email: emailSchema,
+  captchaToken: captchaTokenSchema,
 });
 
 const resetPasswordWithTokenSchema = z.object({
   token: z.string().trim().min(20).max(512),
   password: passwordSchema,
+  captchaToken: captchaTokenSchema,
 });
 
 const resetPasswordWithOtpSchema = z.object({
   email: emailSchema,
   otp: otpSchema,
   password: passwordSchema,
+  captchaToken: captchaTokenSchema,
 });
 
 const resetPasswordSchema = z.union([

@@ -1,10 +1,17 @@
 const fs = require("fs/promises");
 const path = require("path");
 const { ROLES } = require("../constants/roles");
+const {
+  adminUsersTag,
+  doctorDirectoryTag,
+  doctorScopeTag,
+  patientScopeTag,
+} = require("./cacheTags");
 const Alert = require("../models/Alert");
 const Device = require("../models/Device");
 const DoctorPatient = require("../models/DoctorPatient");
 const Reading = require("../models/Reading");
+const responseCache = require("./responseCache");
 const User = require("../models/User");
 
 const removeDoctorVerificationDocument = async (documentFileName) => {
@@ -26,6 +33,17 @@ const deleteUserAccount = async (user) => {
   }
 
   const userId = user._id;
+  const invalidationTags = [adminUsersTag, doctorDirectoryTag];
+  let relatedDoctorIds = [];
+  let relatedPatientIds = [];
+
+  if (user.role === ROLES.PATIENT) {
+    relatedDoctorIds = await DoctorPatient.distinct("doctor", { patient: userId });
+  }
+
+  if (user.role === ROLES.DOCTOR) {
+    relatedPatientIds = await DoctorPatient.distinct("patient", { doctor: userId });
+  }
 
   const cleanupOperations = [
     Alert.updateMany(
@@ -65,6 +83,22 @@ const deleteUserAccount = async (user) => {
   await Promise.all(cleanupOperations);
   await user.deleteOne();
   await removeDoctorVerificationDocument(user.doctorVerification?.documentFileName);
+
+  if (user.role === ROLES.PATIENT) {
+    invalidationTags.push(
+      patientScopeTag(userId),
+      ...relatedDoctorIds.map((doctorId) => doctorScopeTag(doctorId))
+    );
+  }
+
+  if (user.role === ROLES.DOCTOR) {
+    invalidationTags.push(
+      doctorScopeTag(userId),
+      ...relatedPatientIds.map((patientId) => patientScopeTag(patientId))
+    );
+  }
+
+  responseCache.invalidateByTags(invalidationTags);
 
   return user;
 };

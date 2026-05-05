@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import {
   acknowledgeDoctorAlert,
   approveDoctorAssignment,
@@ -7,7 +7,6 @@ import {
   getDoctorPatientAlerts,
   getDoctorPatientDashboard,
 } from "../api/doctorApi";
-import VitalChart from "../components/charts/VitalChart";
 import AppShell from "../components/layout/AppShell";
 import AlertList from "../components/ui/AlertList";
 import EmptyState from "../components/ui/EmptyState";
@@ -25,6 +24,7 @@ import { useSocket } from "../hooks/useSocket";
 import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { FiUsers, FiUserCheck, FiInbox } from "react-icons/fi";
+const VitalChart = lazy(() => import("../components/charts/VitalChart"));
 
 const getStatusFromReading = (reading, openAlertCount = 0) => {
   if (openAlertCount > 0) {
@@ -53,6 +53,11 @@ export default function DoctorDashboardPage() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [decisionLoadingId, setDecisionLoadingId] = useState("");
   const [error, setError] = useState("");
+  const chartFallback = (
+    <div className="chart-wrapper live-chart screen-center" aria-hidden="true">
+      <div className="loading-dot" />
+    </div>
+  );
 
   const loadPatients = async (searchValue = search) => {
     const response = await getAssignedPatients(searchValue);
@@ -416,7 +421,9 @@ export default function DoctorDashboardPage() {
                   />
                 </div>
 
-                <VitalChart data={dashboard.series} />
+                <Suspense fallback={chartFallback}>
+                  <VitalChart data={dashboard.series} />
+                </Suspense>
               </>
             )}
           </SectionCard>

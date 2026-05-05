@@ -1,6 +1,8 @@
 const express = require("express");
 const patientController = require("../controllers/patientController");
 const { authenticate, authorize } = require("../middlewares/auth");
+const { requireCsrf } = require("../middlewares/csrf");
+const { authenticatedWriteLimiter } = require("../middlewares/rateLimits");
 const validate = require("../middlewares/validate");
 const { ROLES } = require("../constants/roles");
 const {
@@ -26,16 +28,22 @@ router.get(
 );
 router.patch(
   "/device/link",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ body: linkDeviceSchema }),
   patientController.linkDevice
 );
 router.post(
   "/doctor-assignment",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ body: assignDoctorSchema }),
   patientController.assignDoctor
 );
 router.patch(
   "/doctor-assignment/:assignmentId/unassign",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ params: assignmentParamsSchema }),
   patientController.unassignDoctor
 );
@@ -56,6 +64,8 @@ router.get(
 );
 router.patch(
   "/alerts/:alertId/acknowledge",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ params: alertParamsSchema }),
   patientController.acknowledgeAlert
 );
@@ -66,6 +76,8 @@ router.get(
 );
 router.post(
   "/assistant/report",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ body: assistantReportSchema }),
   patientController.generateAssistantReport
 );

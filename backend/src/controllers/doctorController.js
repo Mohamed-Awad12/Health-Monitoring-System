@@ -2,9 +2,38 @@ const mongoose = require("mongoose");
 const Alert = require("../models/Alert");
 const DoctorPatient = require("../models/DoctorPatient");
 const Reading = require("../models/Reading");
+const { doctorScopeTag, patientScopeTag } = require("../services/cacheTags");
 const { getPatientDashboard, getReadingFeed } = require("../services/analyticsService");
+const responseCache = require("../services/responseCache");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
+const { applyLastModified, setCachingHeaders, setNoStoreHeaders } = require("../utils/httpCache");
+const env = require("../config/env");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getLatestDate = (...values) => {
+  const validDates = values
+    .flat()
+    .filter(Boolean)
+    .map((value) => (value instanceof Date ? value : new Date(value)))
+    .filter((value) => !Number.isNaN(value.getTime()));
+
+  if (!validDates.length) {
+    return null;
+  }
+
+  return new Date(Math.max(...validDates.map((value) => value.getTime())));
+};
+
+const invalidateDoctorCache = (doctorId, patientId = null) => {
+  const tags = [doctorScopeTag(doctorId)];
+
+  if (patientId) {
+    tags.push(patientScopeTag(patientId));
+  }
+
+  responseCache.invalidateByTags(tags);
+};
 
 const getPatientTelemetryMaps = async (patientIds) => {
   if (!patientIds.length) {
@@ -77,62 +106,106 @@ const ensureDoctorPatientAccess = async (doctorId, patientId) => {
 };
 
 const listAssignedPatients = catchAsync(async (req, res) => {
-  const searchRegex = req.query.search ? new RegExp(req.query.search, "i") : null;
-  const relations = await DoctorPatient.find({
-    doctor: req.user._id,
-    status: { $in: ["active", "pending"] },
-  })
-    .populate({
-      path: "patient",
-      select: "name email",
-      match: searchRegex
-        ? {
-            $or: [{ name: searchRegex }, { email: searchRegex }],
-          }
-        : {},
-    })
-    .sort({ requestedAt: -1, assignedAt: -1, updatedAt: -1 })
-    .lean();
+  const searchRegex = req.query.search
+    ? new RegExp(escapeRegex(req.query.search), "i")
+    : null;
+  const cachedPayload = await responseCache.remember(
+    `doctor:${req.user._id}:patients:${req.query.search || ""}`,
+    env.DOCTOR_PATIENTS_CACHE_TTL_SECONDS * 1000,
+    async () => {
+      const relations = await DoctorPatient.find({
+        doctor: req.user._id,
+        status: { $in: ["active", "pending"] },
+      })
+        .populate({
+          path: "patient",
+          select: "name email updatedAt",
+          match: searchRegex
+            ? {
+                $or: [{ name: searchRegex }, { email: searchRegex }],
+              }
+            : {},
+        })
+        .sort({ requestedAt: -1, assignedAt: -1, updatedAt: -1 })
+        .lean();
 
-  const populatedRelations = relations.filter((relation) => relation.patient);
-  const patientIds = [
-    ...new Set(populatedRelations.map((relation) => relation.patient._id.toString())),
-  ].map((patientId) => new mongoose.Types.ObjectId(patientId));
+      const populatedRelations = relations.filter((relation) => relation.patient);
+      const patientIds = [
+        ...new Set(populatedRelations.map((relation) => relation.patient._id.toString())),
+      ].map((patientId) => new mongoose.Types.ObjectId(patientId));
 
-  const { latestMap, alertMap } = await getPatientTelemetryMaps(patientIds);
+      const { latestMap, alertMap } = await getPatientTelemetryMaps(patientIds);
 
-  const activePatients = populatedRelations
-    .filter((relation) => relation.status === "active")
-    .map((relation) => formatAssignment(relation, latestMap, alertMap));
-  const pendingAssignments = populatedRelations
-    .filter((relation) => relation.status === "pending")
-    .map((relation) => formatAssignment(relation, latestMap, alertMap));
+      return {
+        patients: populatedRelations
+          .filter((relation) => relation.status === "active")
+          .map((relation) => formatAssignment(relation, latestMap, alertMap)),
+        pendingAssignments: populatedRelations
+          .filter((relation) => relation.status === "pending")
+          .map((relation) => formatAssignment(relation, latestMap, alertMap)),
+        lastModified: getLatestDate(
+          populatedRelations.map(
+            (relation) =>
+              relation.updatedAt ||
+              relation.assignedAt ||
+              relation.requestedAt ||
+              relation.patient?.updatedAt
+          )
+        ),
+      };
+    },
+    [doctorScopeTag(req.user._id)]
+  );
 
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: env.DOCTOR_PATIENTS_CACHE_TTL_SECONDS,
+    staleWhileRevalidate: env.DOCTOR_PATIENTS_CACHE_TTL_SECONDS,
+  });
+  applyLastModified(res, cachedPayload.lastModified);
   res.json({
-    patients: activePatients,
-    pendingAssignments,
+    patients: cachedPayload.patients,
+    pendingAssignments: cachedPayload.pendingAssignments,
   });
 });
 
 const getPatientDashboardForDoctor = catchAsync(async (req, res) => {
   await ensureDoctorPatientAccess(req.user._id, req.params.patientId);
 
-  const dashboard = await getPatientDashboard(
-    req.params.patientId,
-    req.query.range || "day"
+  const range = req.query.range || "day";
+  const dashboard = await responseCache.remember(
+    `doctor:${req.user._id}:patient-dashboard:${req.params.patientId}:${range}`,
+    env.PATIENT_DASHBOARD_CACHE_TTL_SECONDS * 1000,
+    () => getPatientDashboard(req.params.patientId, range),
+    [doctorScopeTag(req.user._id), patientScopeTag(req.params.patientId)]
   );
 
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: env.PATIENT_DASHBOARD_CACHE_TTL_SECONDS,
+    staleWhileRevalidate: env.PATIENT_DASHBOARD_CACHE_TTL_SECONDS,
+  });
+  applyLastModified(res, dashboard.lastModified);
   res.json(dashboard);
 });
 
 const getPatientReadingsForDoctor = catchAsync(async (req, res) => {
   await ensureDoctorPatientAccess(req.user._id, req.params.patientId);
 
-  const readings = await getReadingFeed(
-    req.params.patientId,
-    req.query.range || "day"
+  const range = req.query.range || "day";
+  const readings = await responseCache.remember(
+    `doctor:${req.user._id}:patient-readings:${req.params.patientId}:${range}`,
+    env.READING_FEED_CACHE_TTL_SECONDS * 1000,
+    () => getReadingFeed(req.params.patientId, range),
+    [doctorScopeTag(req.user._id), patientScopeTag(req.params.patientId)]
   );
 
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: env.READING_FEED_CACHE_TTL_SECONDS,
+    staleWhileRevalidate: env.READING_FEED_CACHE_TTL_SECONDS,
+  });
+  applyLastModified(res, readings.lastModified);
   res.json(readings);
 });
 
@@ -152,6 +225,15 @@ const getPatientAlertsForDoctor = catchAsync(async (req, res) => {
     .populate("acknowledgedBy", "name role")
     .lean();
 
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: 10,
+    staleWhileRevalidate: 10,
+  });
+  applyLastModified(
+    res,
+    getLatestDate(alerts.map((alert) => alert.acknowledgedAt || alert.updatedAt || alert.createdAt))
+  );
   res.json({ alerts });
 });
 
@@ -175,7 +257,9 @@ const acknowledgeAlertAsDoctor = catchAsync(async (req, res) => {
     },
     { new: true }
   );
+  invalidateDoctorCache(req.user._id, alert.patient);
 
+  setNoStoreHeaders(res);
   res.json({
     message: "Alert acknowledged",
     alert: updatedAlert,
@@ -203,10 +287,12 @@ const approveAssignment = catchAsync(async (req, res) => {
   relation.assignedAt = now;
   relation.endedAt = null;
   await relation.save();
+  invalidateDoctorCache(req.user._id, relation.patient);
 
   await relation.populate("patient", "name email");
   await relation.populate("doctor", "name email specialty");
 
+  setNoStoreHeaders(res);
   res.json({
     message: "Assignment approved",
     assignment: relation.toObject(),
@@ -232,10 +318,12 @@ const denyAssignment = catchAsync(async (req, res) => {
   relation.assignedAt = null;
   relation.endedAt = null;
   await relation.save();
+  invalidateDoctorCache(req.user._id, relation.patient);
 
   await relation.populate("patient", "name email");
   await relation.populate("doctor", "name email specialty");
 
+  setNoStoreHeaders(res);
   res.json({
     message: "Assignment denied",
     assignment: relation.toObject(),

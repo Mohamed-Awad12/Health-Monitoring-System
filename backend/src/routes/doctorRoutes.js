@@ -6,6 +6,8 @@ const {
   ensureApprovedDoctor,
 } = require("../middlewares/auth");
 const { ROLES } = require("../constants/roles");
+const { requireCsrf } = require("../middlewares/csrf");
+const { authenticatedWriteLimiter } = require("../middlewares/rateLimits");
 const validate = require("../middlewares/validate");
 const {
   patientSearchQuerySchema,
@@ -27,11 +29,15 @@ router.get(
 );
 router.patch(
   "/assignments/:assignmentId/approve",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ params: assignmentParamsSchema }),
   doctorController.approveAssignment
 );
 router.patch(
   "/assignments/:assignmentId/deny",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ params: assignmentParamsSchema }),
   doctorController.denyAssignment
 );
@@ -52,6 +58,8 @@ router.get(
 );
 router.patch(
   "/alerts/:alertId/acknowledge",
+  authenticatedWriteLimiter,
+  requireCsrf,
   validate({ params: alertParamsSchema }),
   doctorController.acknowledgeAlertAsDoctor
 );

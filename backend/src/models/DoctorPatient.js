@@ -43,5 +43,7 @@ const doctorPatientSchema = new mongoose.Schema(
 );
 
 doctorPatientSchema.index({ doctor: 1, patient: 1 }, { unique: true });
+doctorPatientSchema.index({ patient: 1, status: 1, updatedAt: -1 });
+doctorPatientSchema.index({ doctor: 1, status: 1, updatedAt: -1 });
 
 module.exports = mongoose.model("DoctorPatient", doctorPatientSchema);

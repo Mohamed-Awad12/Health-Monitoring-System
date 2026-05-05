@@ -2,8 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const User = require("../models/User");
 const { ROLES } = require("../constants/roles");
+const { adminUsersTag, doctorDirectoryTag } = require("../services/cacheTags");
+const responseCache = require("../services/responseCache");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
+const { applyLastModified, setCachingHeaders, setNoStoreHeaders } = require("../utils/httpCache");
 const { doctorVerificationDir } = require("../middlewares/upload");
 const { deleteUserAccount } = require("../services/accountService");
 const { sendEmailVerificationOtp } = require("../services/userOtpService");
@@ -19,9 +22,13 @@ const normalizeOptionalString = (value) => {
   return normalized ? normalized : undefined;
 };
 
+const invalidateAdminUsersCache = () => {
+  responseCache.invalidateByTags([adminUsersTag, doctorDirectoryTag]);
+};
+
 const listUsers = catchAsync(async (req, res) => {
-  const page = req.query.page;
-  const limit = req.query.limit;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
   const skip = (page - 1) * limit;
   const filter = {};
 
@@ -42,30 +49,47 @@ const listUsers = catchAsync(async (req, res) => {
     filter.$or = [{ name: safeSearchRegex }, { email: safeSearchRegex }];
   }
 
-  const [users, totalUsers] = await Promise.all([
-    User.find(filter)
-      .select(
-        "name email role specialty phone emailVerified doctorVerification createdAt updatedAt"
-      )
-      .sort({ createdAt: -1, _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    User.countDocuments(filter),
-  ]);
+  const cachedPayload = await responseCache.remember(
+    `admin:users:${JSON.stringify(req.query)}`,
+    30 * 1000,
+    async () => {
+      const [users, totalUsers] = await Promise.all([
+        User.find(filter)
+          .select(
+            "name email role specialty phone emailVerified doctorVerification createdAt updatedAt"
+          )
+          .sort({ createdAt: -1, _id: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        User.countDocuments(filter),
+      ]);
 
-  const totalPages = totalUsers > 0 ? Math.ceil(totalUsers / limit) : 1;
-
-  res.json({
-    users,
-    pagination: {
-      page,
-      limit,
-      total: totalUsers,
-      totalPages,
-      hasNextPage: skip + users.length < totalUsers,
-      hasPreviousPage: page > 1,
+      return {
+        users,
+        pagination: {
+          page,
+          limit,
+          total: totalUsers,
+          totalPages: totalUsers > 0 ? Math.ceil(totalUsers / limit) : 1,
+          hasNextPage: skip + users.length < totalUsers,
+          hasPreviousPage: page > 1,
+        },
+        lastModified: users[0]?.updatedAt || users[0]?.createdAt || null,
+      };
     },
+    [adminUsersTag]
+  );
+
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: 30,
+    staleWhileRevalidate: 30,
+  });
+  applyLastModified(res, cachedPayload.lastModified);
+  res.json({
+    users: cachedPayload.users,
+    pagination: cachedPayload.pagination,
   });
 });
 
@@ -80,6 +104,7 @@ const getUserById = catchAsync(async (req, res) => {
     throw new ApiError(404, "User not found");
   }
 
+  setNoStoreHeaders(res);
   res.json({ user });
 });
 
@@ -113,9 +138,11 @@ const createUser = catchAsync(async (req, res) => {
           }
         : {
             status: "not_submitted",
-          },
+    },
   });
 
+  invalidateAdminUsersCache();
+  setNoStoreHeaders(res);
   res.status(201).json({
     message: "User created successfully",
     user: user.toJSON(),
@@ -193,7 +220,9 @@ const updateUser = catchAsync(async (req, res) => {
   }
 
   await user.save();
+  invalidateAdminUsersCache();
 
+  setNoStoreHeaders(res);
   res.json({
     message: "User updated successfully",
     user: user.toJSON(),
@@ -220,7 +249,9 @@ const deleteUser = catchAsync(async (req, res) => {
   }
 
   await deleteUserAccount(user);
+  invalidateAdminUsersCache();
 
+  setNoStoreHeaders(res);
   res.json({
     message: "User deleted successfully",
   });
@@ -256,6 +287,11 @@ const getDoctorVerificationDocument = catchAsync(async (req, res) => {
     "Content-Disposition",
     `inline; filename="${user.doctorVerification.documentOriginalName || safeName}"`
   );
+  setCachingHeaders(res, {
+    scope: "private",
+    maxAge: 300,
+    staleWhileRevalidate: 300,
+  });
 
   res.sendFile(absolutePath);
 });
@@ -277,7 +313,9 @@ const reviewDoctorVerification = catchAsync(async (req, res) => {
   user.doctorVerification.reviewNote = normalizeOptionalString(req.body.reviewNote) || "";
 
   await user.save();
+  invalidateAdminUsersCache();
 
+  setNoStoreHeaders(res);
   res.json({
     message:
       req.body.status === "approved"
@@ -306,6 +344,7 @@ const sendVerificationEmailToUser = catchAsync(async (req, res) => {
     throw new ApiError(500, "Failed to send verification email");
   }
 
+  setNoStoreHeaders(res);
   res.status(200).json({
     message: "Verification OTP sent successfully",
   });

@@ -4,6 +4,7 @@ import {
   login as loginRequest,
   registerDoctor,
   registerPatient,
+  logout as logoutRequest,
 } from "../api/authApi";
 
 export const AuthContext = createContext(null);
@@ -16,7 +17,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(
     () => window.localStorage.getItem("pulse_token") || null
   );
-  const [loading, setLoading] = useState(Boolean(token));
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (token) {
@@ -36,11 +37,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let isMounted = true;
-
-    if (!token) {
-      setLoading(false);
-      return undefined;
-    }
+    setLoading(true);
 
     getCurrentUser()
       .then(({ data }) => {
@@ -63,11 +60,11 @@ export function AuthProvider({ children }) {
     return () => {
       isMounted = false;
     };
-  }, [token]);
+  }, []);
 
   const applySession = ({ token: nextToken, user: nextUser }) => {
-    setToken(nextToken);
-    setUser(nextUser);
+    setToken(nextToken || null);
+    setUser(nextUser || null);
   };
 
   const updateCurrentUser = (nextUser) => {
@@ -95,6 +92,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    logoutRequest().catch(() => {});
     setToken(null);
     setUser(null);
     setLoading(false);

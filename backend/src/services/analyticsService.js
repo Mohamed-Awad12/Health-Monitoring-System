@@ -23,6 +23,20 @@ const serializeRelation = (relation) => {
   };
 };
 
+const getLatestDate = (...values) => {
+  const validDates = values
+    .flat()
+    .filter(Boolean)
+    .map((value) => (value instanceof Date ? value : new Date(value)))
+    .filter((value) => !Number.isNaN(value.getTime()));
+
+  if (!validDates.length) {
+    return null;
+  }
+
+  return new Date(Math.max(...validDates.map((value) => value.getTime())));
+};
+
 const getTrendSeries = async (patientId, range = "day") => {
   const { start, end, format } = getRangeBounds(range);
 
@@ -106,41 +120,40 @@ const getSummary = async (patientId, range = "day") => {
 };
 
 const getPatientDashboard = async (patientId, range = "day") => {
-  const [
-    latestReading,
-    series,
-    summary,
-    openAlertCount,
-    activeRelations,
-    pendingRelations,
-    deniedRelation,
-    device,
-  ] =
+  const [latestReading, series, summary, openAlertCount, relations, device] =
     await Promise.all([
       Reading.findOne({ patient: patientId }).sort({ timestamp: -1 }).lean(),
       getTrendSeries(patientId, range),
       getSummary(patientId, range),
       Alert.countDocuments({ patient: patientId, status: "open" }),
-      DoctorPatient.find({ patient: patientId, status: "active" })
-        .sort({ assignedAt: -1, updatedAt: -1 })
-        .populate("doctor", "name email specialty")
-        .lean(),
-      DoctorPatient.find({ patient: patientId, status: "pending" })
-        .sort({ requestedAt: -1, updatedAt: -1 })
-        .populate("doctor", "name email specialty")
-        .lean(),
-      DoctorPatient.findOne({ patient: patientId, status: "denied" })
-        .sort({ respondedAt: -1, updatedAt: -1 })
+      DoctorPatient.find({
+        patient: patientId,
+        status: { $in: ["active", "pending", "denied"] },
+      })
+        .sort({ updatedAt: -1, assignedAt: -1, requestedAt: -1, respondedAt: -1 })
         .populate("doctor", "name email specialty")
         .lean(),
       Device.findOne({ patient: patientId }).select("-deviceSecretId").lean(),
     ]);
+
+  const activeRelations = relations.filter((relation) => relation.status === "active");
+  const pendingRelations = relations.filter((relation) => relation.status === "pending");
+  const deniedRelation =
+    relations.find((relation) => relation.status === "denied") || null;
+  const lastModified = getLatestDate(
+    latestReading?.timestamp,
+    latestReading?.updatedAt,
+    relations.map((relation) => relation.updatedAt || relation.respondedAt),
+    device?.updatedAt,
+    device?.lastSeenAt
+  );
 
   return {
     latestReading,
     series,
     summary,
     openAlertCount,
+    lastModified,
     activeDoctor: activeRelations[0]?.doctor || null,
     careTeam: {
       active: activeRelations.map(serializeRelation),
@@ -173,6 +186,7 @@ const getReadingFeed = async (patientId, range = "day") => {
 
   return {
     latestReading,
+    lastModified: getLatestDate(latestReading?.timestamp, latestReading?.updatedAt),
     summary,
     series,
     range,

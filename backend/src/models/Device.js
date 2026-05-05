@@ -33,4 +33,7 @@ const deviceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+deviceSchema.index({ patient: 1, updatedAt: -1 });
+deviceSchema.index({ patient: 1, isActive: 1 });
+
 module.exports = mongoose.model("Device", deviceSchema);

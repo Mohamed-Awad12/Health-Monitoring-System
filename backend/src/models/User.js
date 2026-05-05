@@ -137,5 +137,11 @@ userSchema.methods.comparePassword = function comparePassword(candidatePassword)
 
 userSchema.index({ role: 1, name: 1 });
 userSchema.index({ role: 1, "doctorVerification.status": 1, createdAt: -1 });
+userSchema.index({
+  role: 1,
+  emailVerified: 1,
+  "doctorVerification.status": 1,
+  name: 1,
+});
 
 module.exports = mongoose.model("User", userSchema);

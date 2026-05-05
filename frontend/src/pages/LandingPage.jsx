@@ -4,6 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useNavigate } from "react-router-dom";
 import SlidesBackground from "../components/landing/SlidesBackground";
 import SlideNavigation from "../components/landing/SlideNavigation";
+import IntroSplash from "../components/landing/IntroSplash";
 import { useAuth } from "../hooks/useAuth";
 import "../styles/landingSlides.css";
 import { getRoleHomePath } from "../utils/roleRoutes";
@@ -17,6 +18,7 @@ export default function LandingPage() {
   const sectionRefs = useRef([]);
   const progressRef = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [introPhase, setIntroPhase] = useState("hidden");
 
   const primaryLabel = user ? "Open dashboard" : "Create account";
   const primaryPath = user ? getRoleHomePath(user.role) : "/register";
@@ -77,6 +79,53 @@ export default function LandingPage() {
       ],
     [navigate, primaryLabel, primaryPath, user]
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    if (prefersReducedMotion) {
+      return undefined;
+    }
+
+    let hasSeenIntro = false;
+
+    try {
+      hasSeenIntro = window.sessionStorage.getItem("pulse-landing-intro-seen") === "true";
+    } catch {
+      hasSeenIntro = false;
+    }
+
+    if (hasSeenIntro) {
+      return undefined;
+    }
+
+    setIntroPhase("active");
+
+    const exitTimer = window.setTimeout(() => {
+      setIntroPhase("exiting");
+    }, 2600);
+
+    const doneTimer = window.setTimeout(() => {
+      setIntroPhase("hidden");
+
+      try {
+        window.sessionStorage.setItem("pulse-landing-intro-seen", "true");
+      } catch {
+        // Ignore session storage failures and continue showing the site.
+      }
+    }, 3400);
+
+    return () => {
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(doneTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const scroller = containerRef.current;
@@ -194,8 +243,13 @@ export default function LandingPage() {
     });
   };
 
+  const isIntroVisible = introPhase !== "hidden";
+  const isIntroExiting = introPhase === "exiting";
+
   return (
-    <div className="slides-shell">
+    <div className={isIntroVisible ? "slides-shell is-intro-active" : "slides-shell"}>
+      {isIntroVisible ? <IntroSplash exiting={isIntroExiting} /> : null}
+
       <SlidesBackground progressRef={progressRef} />
 
       <header className="slides-topbar">

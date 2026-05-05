@@ -1,10 +1,11 @@
 const { z } = require("zod");
 const { ROLES } = require("../constants/roles");
+const { optionalPlainTextString, plainTextString } = require("./common");
 const { objectIdSchema } = require("./patientValidation");
 
 const passwordSchema = z.string().min(8).max(128);
 const emailSchema = z.string().trim().toLowerCase().email();
-const nameSchema = z.string().trim().min(2).max(80);
+const nameSchema = plainTextString("name", { min: 2, max: 80 });
 const roleSchema = z.enum(Object.values(ROLES));
 
 const userListQuerySchema = z.object({
@@ -27,8 +28,8 @@ const createUserSchema = z
     email: emailSchema,
     password: passwordSchema,
     role: roleSchema,
-    specialty: z.string().trim().max(120).optional().or(z.literal("")),
-    phone: z.string().trim().max(25).optional().or(z.literal("")),
+    specialty: optionalPlainTextString("specialty", 120),
+    phone: optionalPlainTextString("phone", 25),
     emailVerified: z.boolean().optional().default(false),
   })
   .superRefine((payload, ctx) => {
@@ -47,8 +48,8 @@ const updateUserSchema = z
     email: emailSchema.optional(),
     password: passwordSchema.optional(),
     role: roleSchema.optional(),
-    specialty: z.string().trim().max(120).optional().or(z.literal("")),
-    phone: z.string().trim().max(25).optional().or(z.literal("")),
+    specialty: optionalPlainTextString("specialty", 120),
+    phone: optionalPlainTextString("phone", 25),
     emailVerified: z.boolean().optional(),
   })
   .refine((payload) => Object.keys(payload).length > 0, {
@@ -57,7 +58,7 @@ const updateUserSchema = z
 
 const reviewDoctorVerificationSchema = z.object({
   status: z.enum(["approved", "rejected"]),
-  reviewNote: z.string().trim().max(300).optional().or(z.literal("")),
+  reviewNote: optionalPlainTextString("reviewNote", 300),
 });
 
 module.exports = {
