@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "./useAuth";
 
-const getVapidPublicKey = () => import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() || "";
+const getVapidPublicKey = () => import.meta.env.VITE_VAPID_PUBLIC_KEY
+Notification.permission
+navigator.serviceWorker.getRegistration().then(r => r?.active?.state)?.trim() || "";
 
 const urlBase64ToUint8Array = (base64String) => {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
