@@ -26,6 +26,11 @@ export const registerDoctor = (payload) => {
 
 export const login = (payload) => api.post("/auth/login", payload);
 
+export const refreshSession = () => api.post("/auth/refresh", {});
+
+export const verifyTwoFactor = (payload) =>
+  api.post("/auth/2fa/verify", payload);
+
 export const getCsrfToken = () => api.get("/auth/csrf-token");
 
 export const verifyEmailOtp = (payload) =>
@@ -61,6 +66,9 @@ export const updateCurrentUserProfile = (payload) =>
 
 export const changeCurrentUserPassword = (payload) =>
   api.patch("/auth/me/password", payload);
+
+export const updateCurrentUserTwoFactor = (payload) =>
+  api.patch("/auth/me/2fa", payload);
 
 export const deleteCurrentUserAccount = (payload) =>
   api.delete("/auth/me", {

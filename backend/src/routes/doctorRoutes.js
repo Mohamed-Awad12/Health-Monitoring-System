@@ -13,9 +13,12 @@ const {
   patientSearchQuerySchema,
   patientParamsSchema,
   assignmentParamsSchema,
+  assignmentThresholdsSchema,
   patientDashboardQuerySchema,
   alertQuerySchema,
   alertParamsSchema,
+  alertNoteSchema,
+  pushSubscriptionSchema,
 } = require("../validations/doctorValidation");
 
 const router = express.Router();
@@ -26,6 +29,20 @@ router.get(
   "/patients",
   validate({ query: patientSearchQuerySchema }),
   doctorController.listAssignedPatients
+);
+router.post(
+  "/push/subscribe",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: pushSubscriptionSchema }),
+  doctorController.subscribePush
+);
+router.delete(
+  "/push/subscribe",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: pushSubscriptionSchema.pick({ endpoint: true }) }),
+  doctorController.unsubscribePush
 );
 router.patch(
   "/assignments/:assignmentId/approve",
@@ -40,6 +57,13 @@ router.patch(
   requireCsrf,
   validate({ params: assignmentParamsSchema }),
   doctorController.denyAssignment
+);
+router.patch(
+  "/assignments/:assignmentId/thresholds",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ params: assignmentParamsSchema, body: assignmentThresholdsSchema }),
+  doctorController.updateAssignmentThresholds
 );
 router.get(
   "/patients/:patientId/dashboard",
@@ -62,6 +86,13 @@ router.patch(
   requireCsrf,
   validate({ params: alertParamsSchema }),
   doctorController.acknowledgeAlertAsDoctor
+);
+router.patch(
+  "/alerts/:alertId/note",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ params: alertParamsSchema, body: alertNoteSchema }),
+  doctorController.saveAlertNoteAsDoctor
 );
 
 module.exports = router;

@@ -3,9 +3,11 @@ const app = require("./app");
 const env = require("./config/env");
 const connectDatabase = require("./config/db");
 const { initializeSocket } = require("./config/socket");
+const responseCache = require("./services/responseCache");
 
 const startServer = async () => {
   await connectDatabase();
+  await responseCache.connect();
 
   const server = http.createServer(app);
   initializeSocket(server);

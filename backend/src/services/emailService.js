@@ -248,6 +248,7 @@ const sendAlertEmailsToCareTeam = async ({ alert, reading, patient, doctors = []
 };
 
 module.exports = {
+  sendOtpEmail,
   sendEmailVerificationMessage,
   sendPasswordResetEmail,
   sendAlertEmailsToCareTeam,

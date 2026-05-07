@@ -17,7 +17,10 @@ const {
   registerDoctorSchema,
   registerAdminBootstrapSchema,
   loginSchema,
+  refreshTokenSchema,
   updateProfileSchema,
+  updateTwoFactorSchema,
+  verifyTwoFactorSchema,
   verifyEmailSchema,
   resendVerificationEmailSchema,
   forgotPasswordSchema,
@@ -63,6 +66,21 @@ router.post(
   authController.login
 );
 router.post(
+  "/refresh",
+  authIpLimiter,
+  requireCsrf,
+  validate({ body: refreshTokenSchema }),
+  authController.refresh
+);
+router.post(
+  "/2fa/verify",
+  authIpLimiter,
+  validate({ body: verifyTwoFactorSchema }),
+  authAccountLimiter,
+  requireCaptcha,
+  authController.verifyTwoFactor
+);
+router.post(
   "/verify-email",
   authIpLimiter,
   validate({ body: verifyEmailSchema }),
@@ -103,6 +121,15 @@ router.patch(
   requireCsrf,
   validate({ body: changePasswordSchema }),
   authController.changeCurrentUserPassword
+);
+
+router.patch(
+  "/me/2fa",
+  authenticate,
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: updateTwoFactorSchema }),
+  authController.updateCurrentUserTwoFactor
 );
 
 router.post(

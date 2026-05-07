@@ -1,9 +1,14 @@
 const mongoose = require("mongoose");
+const { getIO } = require("../config/socket");
 const Alert = require("../models/Alert");
 const DoctorPatient = require("../models/DoctorPatient");
 const Reading = require("../models/Reading");
 const { doctorScopeTag, patientScopeTag } = require("../services/cacheTags");
 const { getPatientDashboard, getReadingFeed } = require("../services/analyticsService");
+const {
+  registerSubscription,
+  unregisterSubscription,
+} = require("../services/pushNotificationService");
 const responseCache = require("../services/responseCache");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
@@ -88,6 +93,7 @@ const formatAssignment = (relation, latestMap, alertMap) => ({
   requestedAt: relation.requestedAt,
   respondedAt: relation.respondedAt,
   assignedAt: relation.assignedAt,
+  thresholds: relation.thresholds || null,
   ...relation.patient,
   latestReading: latestMap.get(relation.patient._id.toString()) || null,
   openAlertCount: alertMap.get(relation.patient._id.toString()) || 0,
@@ -266,6 +272,43 @@ const acknowledgeAlertAsDoctor = catchAsync(async (req, res) => {
   });
 });
 
+const saveAlertNoteAsDoctor = catchAsync(async (req, res) => {
+  const alert = await Alert.findById(req.params.alertId);
+
+  if (!alert) {
+    throw new ApiError(404, "Alert not found");
+  }
+
+  await ensureDoctorPatientAccess(req.user._id, alert.patient);
+
+  const note = typeof req.body.note === "string" ? req.body.note.trim() : "";
+  alert.doctorNote = note || null;
+  alert.notedAt = note ? new Date() : null;
+  await alert.save();
+  await alert.populate("acknowledgedBy", "name role");
+  invalidateDoctorCache(req.user._id, alert.patient);
+
+  const io = getIO();
+
+  if (io) {
+    const payload = {
+      id: alert._id,
+      patientId: alert.patient,
+      doctorNote: alert.doctorNote,
+      notedAt: alert.notedAt,
+    };
+
+    io.to(`patient:${alert.patient}`).emit("alert:note-updated", payload);
+    io.to(`doctor:${req.user._id}`).emit("alert:note-updated", payload);
+  }
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Alert note saved",
+    alert,
+  });
+});
+
 const approveAssignment = catchAsync(async (req, res) => {
   const relation = await DoctorPatient.findOne({
     _id: req.params.assignmentId,
@@ -330,12 +373,73 @@ const denyAssignment = catchAsync(async (req, res) => {
   });
 });
 
+const updateAssignmentThresholds = catchAsync(async (req, res) => {
+  const relation = await DoctorPatient.findOne({
+    _id: req.params.assignmentId,
+    doctor: req.user._id,
+  });
+
+  if (!relation) {
+    throw new ApiError(404, "Assignment not found");
+  }
+
+  if (relation.status !== "active") {
+    throw new ApiError(409, "Only active assignments can update alert thresholds");
+  }
+
+  relation.thresholds = relation.thresholds || {};
+
+  ["lowSpo2", "lowBpm", "highBpm"].forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+      relation.thresholds[field] = req.body[field];
+    }
+  });
+
+  await relation.save();
+  invalidateDoctorCache(req.user._id, relation.patient);
+  await relation.populate("patient", "name email");
+  await relation.populate("doctor", "name email specialty");
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Assignment thresholds updated",
+    assignment: relation.toObject(),
+  });
+});
+
+const subscribePush = catchAsync(async (req, res) => {
+  const subscription = await registerSubscription(req.user._id, req.body);
+
+  if (!subscription) {
+    throw new ApiError(404, "User not found");
+  }
+
+  setNoStoreHeaders(res);
+  res.status(201).json({
+    message: "Push subscription registered",
+    subscription,
+  });
+});
+
+const unsubscribePush = catchAsync(async (req, res) => {
+  await unregisterSubscription(req.user._id, req.body.endpoint);
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Push subscription removed",
+  });
+});
+
 module.exports = {
   listAssignedPatients,
   getPatientDashboardForDoctor,
   getPatientReadingsForDoctor,
   getPatientAlertsForDoctor,
   acknowledgeAlertAsDoctor,
+  saveAlertNoteAsDoctor,
   approveAssignment,
   denyAssignment,
+  updateAssignmentThresholds,
+  subscribePush,
+  unsubscribePush,
 };

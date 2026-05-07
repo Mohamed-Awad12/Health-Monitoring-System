@@ -7,6 +7,8 @@ const validate = require("../middlewares/validate");
 const { ROLES } = require("../constants/roles");
 const {
   linkDeviceSchema,
+  rotateDeviceSecretSchema,
+  pushSubscriptionSchema,
   assignDoctorSchema,
   doctorListQuerySchema,
   patientDashboardQuerySchema,
@@ -32,6 +34,27 @@ router.patch(
   requireCsrf,
   validate({ body: linkDeviceSchema }),
   patientController.linkDevice
+);
+router.post(
+  "/device/rotate-secret",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: rotateDeviceSecretSchema }),
+  patientController.rotateDeviceSecret
+);
+router.post(
+  "/push/subscribe",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: pushSubscriptionSchema }),
+  patientController.subscribePush
+);
+router.delete(
+  "/push/subscribe",
+  authenticatedWriteLimiter,
+  requireCsrf,
+  validate({ body: pushSubscriptionSchema.pick({ endpoint: true }) }),
+  patientController.unsubscribePush
 );
 router.post(
   "/doctor-assignment",

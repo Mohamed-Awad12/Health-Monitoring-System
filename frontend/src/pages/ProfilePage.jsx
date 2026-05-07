@@ -4,11 +4,13 @@ import {
   changeCurrentUserPassword,
   deleteCurrentUserAccount,
   updateCurrentUserProfile,
+  updateCurrentUserTwoFactor,
 } from "../api/authApi";
 import AppShell from "../components/layout/AppShell";
 import SectionCard from "../components/ui/SectionCard";
 import StatusPill from "../components/ui/StatusPill";
 import { useAuth } from "../hooks/useAuth";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useToast } from "../hooks/useToast";
 import { useUiPreferences } from "../hooks/useUiPreferences";
 import { getRoleHomePath } from "../utils/roleRoutes";
@@ -36,6 +38,7 @@ const getDoctorVerificationPresentation = (status, t) => {
 
 export default function ProfilePage() {
   const { user, logout, updateCurrentUser } = useAuth();
+  const pushNotifications = usePushNotifications();
   const { addToast } = useToast();
   const { formatDateTime, t } = useUiPreferences();
   const navigate = useNavigate();
@@ -56,6 +59,7 @@ export default function ProfilePage() {
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [twoFactorSubmitting, setTwoFactorSubmitting] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -186,6 +190,49 @@ export default function ProfilePage() {
     }
   };
 
+  const handlePushToggle = async () => {
+    try {
+      if (pushNotifications.isSubscribed) {
+        await pushNotifications.unsubscribe();
+        addToast({ type: "success", message: t("profile.pushDisabled") });
+      } else {
+        await pushNotifications.subscribe();
+        addToast({ type: "success", message: t("profile.pushEnabled") });
+      }
+    } catch (requestError) {
+      addToast({
+        type: "error",
+        message:
+          requestError.response?.data?.message ||
+          (pushNotifications.isSubscribed
+            ? t("profile.pushDisableFailed")
+            : t("profile.pushEnableFailed")),
+      });
+    }
+  };
+
+  const handleTwoFactorToggle = async () => {
+    setTwoFactorSubmitting(true);
+
+    try {
+      const enabled = !user?.twoFactorEnabled;
+      const { data } = await updateCurrentUserTwoFactor({ enabled });
+
+      updateCurrentUser(data.user);
+      addToast({
+        type: "success",
+        message: enabled ? t("profile.twoFactorEnabled") : t("profile.twoFactorDisabled"),
+      });
+    } catch (requestError) {
+      addToast({
+        type: "error",
+        message: requestError.response?.data?.message || t("profile.twoFactorUpdateFailed"),
+      });
+    } finally {
+      setTwoFactorSubmitting(false);
+    }
+  };
+
   const emailVerificationStatus = user?.emailVerified
     ? {
         status: "active",
@@ -200,6 +247,7 @@ export default function ProfilePage() {
     user?.role === "doctor"
       ? getDoctorVerificationPresentation(user.doctorVerification?.status, t)
       : null;
+  const supportsTwoFactor = ["doctor", "admin"].includes(user?.role);
 
   return (
     <AppShell title={t("profile.title")} subtitle={t("profile.subtitle")}>
@@ -312,6 +360,74 @@ export default function ProfilePage() {
               </div>
               <span className="profile-status-meta">{formatDateTime(user?.updatedAt)}</span>
             </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard title={t("profile.preferences")}>
+          <div className="profile-status-list">
+            {supportsTwoFactor ? (
+              <div className="profile-status-item">
+                <div>
+                  <strong>{t("profile.twoFactorAuthentication")}</strong>
+                  <span>{t("profile.twoFactorHint")}</span>
+                </div>
+                <StatusPill
+                  status={user?.twoFactorEnabled ? "active" : "warning"}
+                  label={
+                    user?.twoFactorEnabled
+                      ? t("profile.twoFactorOn")
+                      : t("profile.twoFactorOff")
+                  }
+                />
+              </div>
+            ) : null}
+
+            <div className="profile-status-item">
+              <div>
+                <strong>{t("profile.pushNotifications")}</strong>
+                <span>
+                  {pushNotifications.isSupported
+                    ? t("profile.pushNotificationsHint")
+                    : t("profile.pushUnsupported")}
+                </span>
+              </div>
+              <StatusPill
+                status={pushNotifications.isSubscribed ? "active" : "warning"}
+                label={
+                  pushNotifications.isSubscribed
+                    ? t("profile.pushSubscribed")
+                    : t("profile.pushNotSubscribed")
+                }
+              />
+            </div>
+          </div>
+          <div className="button-row">
+            {supportsTwoFactor ? (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={twoFactorSubmitting}
+                onClick={handleTwoFactorToggle}
+              >
+                {twoFactorSubmitting
+                  ? t("common.loading")
+                  : user?.twoFactorEnabled
+                    ? t("profile.disableTwoFactor")
+                    : t("profile.enableTwoFactor")}
+              </button>
+            ) : null}
+            <button
+              className="primary-button"
+              type="button"
+              disabled={!pushNotifications.isSupported || pushNotifications.loading}
+              onClick={handlePushToggle}
+            >
+              {pushNotifications.loading
+                ? t("common.loading")
+                : pushNotifications.isSubscribed
+                  ? t("profile.disablePush")
+                  : t("profile.enablePush")}
+            </button>
           </div>
         </SectionCard>
 

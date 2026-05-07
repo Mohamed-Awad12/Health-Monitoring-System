@@ -60,7 +60,22 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const nextUser = await login(payload);
+      const loginResult = await login(payload);
+
+      if (loginResult?.requiresTwoFactor) {
+        window.sessionStorage.setItem("pulse_2fa_temp_token", loginResult.tempToken);
+        window.sessionStorage.setItem("pulse_2fa_email", payload.email);
+        navigate("/verify-2fa", {
+          replace: true,
+          state: {
+            tempToken: loginResult.tempToken,
+            email: payload.email,
+          },
+        });
+        return;
+      }
+
+      const nextUser = loginResult;
       const nextPath =
         location.state?.from?.pathname || getRoleHomePath(nextUser.role);
 

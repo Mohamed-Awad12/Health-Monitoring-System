@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import { useNotifications } from "../../hooks/useNotifications";
 import { useUiPreferences } from "../../hooks/useUiPreferences";
 import { getRoleHomePath } from "../../utils/roleRoutes";
 import PreferenceControls from "../common/PreferenceControls";
+import { FiBell, FiX } from "react-icons/fi";
 
 export default function AppShell({
   title,
@@ -12,9 +14,18 @@ export default function AppShell({
   children,
 }) {
   const { user, logout } = useAuth();
-  const { t } = useUiPreferences();
+  const {
+    notifications = [],
+    unreadCount = 0,
+    markAllRead,
+    markRead,
+    dismissAll,
+  } = useNotifications() || {};
+  const { formatDateTime, t } = useUiPreferences();
   const location = useLocation();
   const shellRef = useRef(null);
+  const notificationsRef = useRef(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const primaryNavigation = user
     ? [
         {
@@ -118,6 +129,26 @@ export default function AppShell({
     };
   }, [title]);
 
+  useEffect(() => {
+    if (!notificationsOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!notificationsRef.current?.contains(event.target)) {
+        setNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [notificationsOpen]);
+
+  const visibleNotifications = notifications.slice(0, 10);
+
   return (
     <div className="app-shell" ref={shellRef}>
       <a href="#main-content" className="skip-to-content">
@@ -135,6 +166,66 @@ export default function AppShell({
 
         <div className="topbar-actions">
           {actions}
+          <div className="notifications-menu" ref={notificationsRef}>
+            <button
+              className="icon-button notification-bell"
+              type="button"
+              aria-label={t("notifications.bellLabel")}
+              onClick={() => setNotificationsOpen((isOpen) => !isOpen)}
+            >
+              <FiBell aria-hidden="true" />
+              {unreadCount > 0 ? (
+                <span className="notification-badge">{unreadCount}</span>
+              ) : null}
+            </button>
+
+            {notificationsOpen ? (
+              <div className="notifications-panel">
+                <div className="notifications-panel-header">
+                  <strong>{t("notifications.title")}</strong>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label={t("notifications.close")}
+                    onClick={() => setNotificationsOpen(false)}
+                  >
+                    <FiX aria-hidden="true" />
+                  </button>
+                </div>
+
+                <div className="notifications-actions">
+                  <button className="ghost-button" type="button" onClick={markAllRead}>
+                    {t("notifications.markAllRead")}
+                  </button>
+                  <button className="ghost-button danger" type="button" onClick={dismissAll}>
+                    {t("notifications.dismissAll")}
+                  </button>
+                </div>
+
+                {visibleNotifications.length ? (
+                  <div className="notifications-list">
+                    {visibleNotifications.map((notification) => (
+                      <button
+                        key={notification.id}
+                        className={
+                          notification.read
+                            ? "notification-item"
+                            : "notification-item unread"
+                        }
+                        type="button"
+                        onClick={() => markRead(notification.id)}
+                      >
+                        <span>{notification.message}</span>
+                        <small>{formatDateTime(notification.createdAt)}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="notifications-empty">{t("notifications.empty")}</p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <PreferenceControls />
           <div className="profile-chip">
             <div>

@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
+import { NotificationsProvider } from "./context/NotificationsContext";
 import { SocketProvider } from "./context/SocketContext";
 import { ToastProvider } from "./context/ToastContext";
 import { UiPreferencesProvider } from "./context/UiPreferencesContext";
@@ -22,11 +23,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <UiPreferencesProvider>
         <AuthProvider>
           <SocketProvider>
-            <ToastProvider>
-              <ConfirmProvider>
-                <App />
-              </ConfirmProvider>
-            </ToastProvider>
+            <NotificationsProvider>
+              <ToastProvider>
+                <ConfirmProvider>
+                  <App />
+                </ConfirmProvider>
+              </ToastProvider>
+            </NotificationsProvider>
           </SocketProvider>
         </AuthProvider>
       </UiPreferencesProvider>

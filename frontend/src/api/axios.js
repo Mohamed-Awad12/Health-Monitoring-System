@@ -94,6 +94,20 @@ const api = axios.create({
   withCredentials: true,
 });
 
+let refreshSessionPromise = null;
+
+const authRefreshExcludedPaths = [
+  "/auth/login",
+  "/auth/refresh",
+  "/auth/2fa/verify",
+  "/auth/verify-email",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
+
+const isAuthRefreshExcluded = (url = "") =>
+  authRefreshExcludedPaths.some((path) => String(url).includes(path));
+
 api.interceptors.request.use(async (config) => {
   const method = (config.method || "get").toLowerCase();
   config.headers = config.headers || {};
@@ -114,5 +128,64 @@ api.interceptors.request.use(async (config) => {
 
   return config;
 });
+
+const refreshAccessToken = async () => {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = api
+      .post("/auth/refresh", {}, { skipAuthRefresh: true })
+      .then(({ data }) => {
+        if (data?.token) {
+          window.localStorage.setItem("pulse_token", data.token);
+        }
+
+        if (data?.user) {
+          window.localStorage.setItem("pulse_user", JSON.stringify(data.user));
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("pulse:session-refreshed", { detail: data })
+        );
+
+        return data;
+      })
+      .finally(() => {
+        refreshSessionPromise = null;
+      });
+  }
+
+  return refreshSessionPromise;
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config || {};
+
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.skipAuthRefresh &&
+      !isAuthRefreshExcluded(originalRequest.url)
+    ) {
+      originalRequest._retry = true;
+
+      try {
+        const session = await refreshAccessToken();
+
+        if (session?.token) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${session.token}`;
+        }
+
+        return api(originalRequest);
+      } catch {
+        window.localStorage.removeItem("pulse_token");
+        window.localStorage.removeItem("pulse_user");
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default api;

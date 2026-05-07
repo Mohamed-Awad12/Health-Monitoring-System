@@ -44,6 +44,18 @@ const loginSchema = z.object({
   captchaToken: captchaTokenSchema,
 });
 
+const refreshTokenSchema = z.object({}).strict();
+
+const verifyTwoFactorSchema = z.object({
+  tempToken: z.string().trim().min(20).max(1024),
+  otp: otpSchema,
+  captchaToken: captchaTokenSchema,
+});
+
+const updateTwoFactorSchema = z.object({
+  enabled: z.boolean(),
+});
+
 const updateProfileSchema = z
   .object({
     name: nameSchema.optional(),
@@ -109,6 +121,7 @@ module.exports = {
   changePasswordSchema,
   deleteAccountSchema,
   forgotPasswordSchema,
+  refreshTokenSchema,
   resetPasswordSchema,
   resendVerificationEmailSchema,
   registerPatientSchema,
@@ -116,5 +129,7 @@ module.exports = {
   registerAdminBootstrapSchema,
   loginSchema,
   updateProfileSchema,
+  updateTwoFactorSchema,
+  verifyTwoFactorSchema,
   verifyEmailSchema,
 };

@@ -38,6 +38,26 @@ const doctorPatientSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    thresholds: {
+      lowSpo2: {
+        type: Number,
+        min: 50,
+        max: 100,
+        default: null,
+      },
+      lowBpm: {
+        type: Number,
+        min: 10,
+        max: 300,
+        default: null,
+      },
+      highBpm: {
+        type: Number,
+        min: 10,
+        max: 300,
+        default: null,
+      },
+    },
   },
   { timestamps: true }
 );

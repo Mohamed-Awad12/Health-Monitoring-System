@@ -42,6 +42,20 @@ const clearAuthCookie = (res) => {
   res.clearCookie(env.AUTH_COOKIE_NAME, buildCookieOptions());
 };
 
+const REFRESH_COOKIE_NAME = "pulse_refresh";
+
+const setRefreshCookie = (res, token, maxAge) => {
+  res.cookie(REFRESH_COOKIE_NAME, token, {
+    ...buildCookieOptions(),
+    httpOnly: true,
+    maxAge,
+  });
+};
+
+const clearRefreshCookie = (res) => {
+  res.clearCookie(REFRESH_COOKIE_NAME, buildCookieOptions());
+};
+
 const buildCsrfToken = () => crypto.randomBytes(32).toString("base64url");
 
 const setCsrfCookie = (res, token) => {
@@ -56,9 +70,12 @@ const clearCsrfCookie = (res) => {
 };
 
 module.exports = {
+  REFRESH_COOKIE_NAME,
   parseCookies,
   setAuthCookie,
   clearAuthCookie,
+  setRefreshCookie,
+  clearRefreshCookie,
   buildCsrfToken,
   setCsrfCookie,
   clearCsrfCookie,

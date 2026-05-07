@@ -3,6 +3,7 @@ const cors = require("cors");
 const express = require("express");
 const helmet = require("helmet");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const mongoSanitize = require("express-mongo-sanitize");
 const morgan = require("morgan");
 const env = require("./config/env");
@@ -10,13 +11,17 @@ const { getCsrfToken } = require("./middlewares/csrf");
 const enforceHttps = require("./middlewares/enforceHttps");
 const errorHandler = require("./middlewares/errorHandler");
 const { globalApiLimiter } = require("./middlewares/rateLimits");
+const { authenticate, authorize } = require("./middlewares/auth");
 const notFound = require("./middlewares/notFound");
+const { ROLES } = require("./constants/roles");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const deviceRoutes = require("./routes/deviceRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const patientRoutes = require("./routes/patientRoutes");
-const { setCachingHeaders } = require("./utils/httpCache");
+const openApiSpec = require("./docs/openapi");
+const metricsService = require("./services/metricsService");
+const { setCachingHeaders, setNoStoreHeaders } = require("./utils/httpCache");
 
 const app = express();
 
@@ -79,6 +84,7 @@ const isCorsOriginAllowed = (origin) => {
 app.use((req, res, next) => {
   req.id = crypto.randomUUID();
   res.setHeader("X-Request-Id", req.id);
+  metricsService.incrementTotalRequests();
   next();
 });
 app.use(enforceHttps);
@@ -147,6 +153,9 @@ app.use(express.urlencoded({ extended: false, limit: "256kb" }));
 app.use(mongoSanitize());
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
+const getDbStatus = () =>
+  mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+
 app.get("/api/health", (_req, res) => {
   setCachingHeaders(res, {
     scope: "public",
@@ -155,11 +164,56 @@ app.get("/api/health", (_req, res) => {
   });
   res.json({
     status: "ok",
+    uptime: metricsService.getSnapshot().uptime,
+    db: getDbStatus(),
+    cache: metricsService.getCacheMetrics(),
     timestamp: new Date().toISOString(),
   });
 });
 
+app.get(
+  "/api/metrics",
+  authenticate,
+  authorize(ROLES.ADMIN),
+  (_req, res) => {
+    setNoStoreHeaders(res);
+    res.json({
+      status: "ok",
+      db: getDbStatus(),
+      ...metricsService.getSnapshot(),
+    });
+  }
+);
+
 app.get("/api/auth/csrf-token", getCsrfToken);
+
+if (env.NODE_ENV !== "production") {
+  app.get("/api/openapi.json", (_req, res) => {
+    setNoStoreHeaders(res);
+    res.json(openApiSpec);
+  });
+
+  try {
+    const { apiReference } = require("@scalar/express-api-reference");
+
+    app.use(
+      "/api/docs",
+      apiReference({
+        spec: {
+          content: openApiSpec,
+        },
+      })
+    );
+  } catch {
+    app.get("/api/docs", (_req, res) => {
+      setNoStoreHeaders(res);
+      res.status(503).json({
+        message: "Install @scalar/express-api-reference to enable the API reference UI.",
+        specUrl: "/api/openapi.json",
+      });
+    });
+  }
+}
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);

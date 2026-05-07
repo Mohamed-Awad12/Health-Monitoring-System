@@ -8,6 +8,7 @@ import {
   getPatientAlerts,
   getPatientDashboard,
   linkDevice,
+  rotateDeviceSecret,
   unassignDoctor,
 } from "../api/patientApi";
 import AppShell from "../components/layout/AppShell";
@@ -112,6 +113,8 @@ export default function PatientDashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [deviceSubmitting, setDeviceSubmitting] = useState(false);
+  const [deviceSecretRotating, setDeviceSecretRotating] = useState(false);
+  const [rotatedDeviceSecret, setRotatedDeviceSecret] = useState("");
   const [assigningDoctorId, setAssigningDoctorId] = useState("");
   const [unassigningAssignmentId, setUnassigningAssignmentId] = useState("");
   const [downloadingFormat, setDownloadingFormat] = useState("");
@@ -137,18 +140,6 @@ export default function PatientDashboardPage() {
     append = false,
   } = {}) => {
     const normalizedSearch = String(searchValue || "").trim();
-
-    if (!normalizedSearch) {
-      doctorRequestIdRef.current += 1;
-      setDoctorLoading(false);
-      setDoctorError("");
-      setDoctors([]);
-      setDoctorPage(1);
-      setDoctorHasNextPage(false);
-      setDoctorTotal(0);
-      return;
-    }
-
     const requestId = ++doctorRequestIdRef.current;
 
     setDoctorLoading(true);
@@ -156,7 +147,7 @@ export default function PatientDashboardPage() {
 
     try {
       const response = await getDoctors({
-        search: normalizedSearch,
+        search: normalizedSearch || undefined,
         page: pageValue,
         limit: DOCTOR_PAGE_LIMIT,
       });
@@ -231,10 +222,12 @@ export default function PatientDashboardPage() {
 
     socket.on("reading:new", refreshOnSocket);
     socket.on("alert:new", refreshOnSocket);
+    socket.on("device:secret-rotated", refreshOnSocket);
 
     return () => {
       socket.off("reading:new", refreshOnSocket);
       socket.off("alert:new", refreshOnSocket);
+      socket.off("device:secret-rotated", refreshOnSocket);
     };
   }, [socket, user, range]);
 
@@ -252,6 +245,37 @@ export default function PatientDashboardPage() {
       setError(requestError.response?.data?.message || t("patient.linkDeviceFailed"));
     } finally {
       setDeviceSubmitting(false);
+    }
+  };
+
+  const handleRotateDeviceSecret = async () => {
+    const confirmed = await confirm({
+      title: t("patient.rotateDeviceSecretConfirmTitle"),
+      message: t("patient.rotateDeviceSecretConfirmMessage"),
+      confirmLabel: t("patient.rotateDeviceSecret"),
+      cancelLabel: t("common.dashboard"),
+      variant: "danger",
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeviceSecretRotating(true);
+    setRotatedDeviceSecret("");
+    setError("");
+
+    try {
+      const response = await rotateDeviceSecret();
+      setRotatedDeviceSecret(response.data?.deviceSecretId || "");
+      addToast({ type: "success", message: t("patient.rotateDeviceSecretSuccess") });
+      await loadDashboard(range);
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.message || t("patient.rotateDeviceSecretFailed")
+      );
+    } finally {
+      setDeviceSecretRotating(false);
     }
   };
 
@@ -561,20 +585,41 @@ export default function PatientDashboardPage() {
             {loading ? (
               <DevicePanelSkeleton label={t("patient.vitalsLoading")} />
             ) : dashboard?.device ? (
-              <div className="stack-list device-status-panel">
-                <div className="line-item">
-                  <span>{t("common.label")}</span>
-                  <strong>{dashboard.device.label || t("patient.connectedDevice")}</strong>
+              <>
+                <div className="stack-list device-status-panel">
+                  <div className="line-item">
+                    <span>{t("common.label")}</span>
+                    <strong>{dashboard.device.label || t("patient.connectedDevice")}</strong>
+                  </div>
+                  <div className="line-item">
+                    <span>{t("common.status")}</span>
+                    <StatusPill status={dashboard.device.isActive ? "normal" : "warning"} />
+                  </div>
+                  <div className="line-item">
+                    <span>{t("common.lastSeen")}</span>
+                    <strong>{formatDateTime(dashboard.device.lastSeenAt)}</strong>
+                  </div>
                 </div>
-                <div className="line-item">
-                  <span>{t("common.status")}</span>
-                  <StatusPill status={dashboard.device.isActive ? "normal" : "warning"} />
-                </div>
-                <div className="line-item">
-                  <span>{t("common.lastSeen")}</span>
-                  <strong>{formatDateTime(dashboard.device.lastSeenAt)}</strong>
-                </div>
-              </div>
+
+                {rotatedDeviceSecret ? (
+                  <div className="form-success device-secret-result" role="status">
+                    <span>{t("patient.rotateDeviceSecretPlaintext")}</span>
+                    <code>{rotatedDeviceSecret}</code>
+                    <small>{t("patient.rotateDeviceSecretStoreNow")}</small>
+                  </div>
+                ) : null}
+
+                <button
+                  className="ghost-button danger"
+                  type="button"
+                  disabled={deviceSecretRotating}
+                  onClick={handleRotateDeviceSecret}
+                >
+                  {deviceSecretRotating
+                    ? t("common.loading")
+                    : t("patient.rotateDeviceSecret")}
+                </button>
+              </>
             ) : (
               <EmptyState
                 icon={FiSmartphone}
@@ -733,8 +778,7 @@ export default function PatientDashboardPage() {
 
             {doctorError ? <div className="form-error">{doctorError}</div> : null}
 
-            {doctorSearch.trim() ? (
-              doctorLoading && !doctors.length ? (
+            {doctorLoading && !doctors.length ? (
                 <DirectorySkeleton label={t("patient.loadingDoctorsDirectory")} count={3} />
               ) : doctors.length ? (
                 <>
@@ -821,8 +865,7 @@ export default function PatientDashboardPage() {
                   title={t("patient.noDoctorsFoundTitle")}
                   description={t("patient.noDoctorsFoundDescription")}
                 />
-              )
-            ) : null}
+              )}
           </SectionCard>
 
           <SectionCard

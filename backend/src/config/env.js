@@ -30,6 +30,11 @@ const envSchema = z
     MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
     JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
     JWT_EXPIRES_IN: z.string().default("7d"),
+    REFRESH_TOKEN_SECRET: z
+      .string()
+      .min(16, "REFRESH_TOKEN_SECRET must be at least 16 characters")
+      .default("change-this-refresh-token-secret"),
+    REFRESH_TOKEN_EXPIRES_IN: z.string().default("30d"),
     CORS_ORIGIN: z.string().default("http://localhost:5173"),
     ENFORCE_HTTPS: booleanSchema.default(false),
     AUTH_COOKIE_NAME: z.string().trim().min(1).default("pulse_session"),
@@ -46,6 +51,8 @@ const envSchema = z
     READING_FEED_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(10),
     DIRECTORY_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(60),
     DOCTOR_PATIENTS_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).default(15),
+    REDIS_URL: z.string().trim().default("redis://127.0.0.1:6379"),
+    REDIS_ENABLED: booleanSchema.default(false),
     GLOBAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1000),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
     AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
@@ -55,6 +62,7 @@ const envSchema = z
     CAPTCHA_PROVIDER: z.enum(["hcaptcha", "recaptcha"]).optional().or(z.literal("")),
     CAPTCHA_SECRET: z.string().trim().optional().or(z.literal("")),
     CAPTCHA_SITEVERIFY_URL: z.string().trim().url().optional().or(z.literal("")),
+    ALERT_DEDUP_MINUTES: z.coerce.number().int().positive().default(5),
     PATIENT_LOW_SPO2_THRESHOLD: z.coerce.number().default(90),
     PATIENT_LOW_BPM_THRESHOLD: z.coerce.number().default(50),
     PATIENT_HIGH_BPM_THRESHOLD: z.coerce.number().default(120),
@@ -66,6 +74,9 @@ const envSchema = z
     EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
     EMAIL_WEBHOOK_AUTH_HEADER: z.string().optional().or(z.literal("")),
     EMAIL_WEBHOOK_AUTH_VALUE: z.string().optional().or(z.literal("")),
+    VAPID_PUBLIC_KEY: z.string().trim().optional().or(z.literal("")),
+    VAPID_PRIVATE_KEY: z.string().trim().optional().or(z.literal("")),
+    VAPID_EMAIL: z.string().trim().optional().or(z.literal("")),
     ADMIN_BOOTSTRAP_TOKEN: z
       .string()
       .trim()

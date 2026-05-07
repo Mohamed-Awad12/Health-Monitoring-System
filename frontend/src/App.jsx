@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
+const VerifyTwoFactorPage = lazy(() => import("./pages/VerifyTwoFactorPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const PatientDashboardPage = lazy(() => import("./pages/PatientDashboardPage"));
@@ -65,6 +66,14 @@ export default function App() {
             element={
               <PageWrapper>
                 <VerifyEmailPage />
+              </PageWrapper>
+            }
+          />
+          <Route
+            path="/verify-2fa"
+            element={
+              <PageWrapper>
+                <VerifyTwoFactorPage />
               </PageWrapper>
             }
           />

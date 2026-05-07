@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const env = require("./env");
 const User = require("../models/User");
+const metricsService = require("../services/metricsService");
 const { parseCookies } = require("../utils/cookies");
 const { verifyToken } = require("../utils/jwt");
 
@@ -75,6 +76,7 @@ const initializeSocket = (httpServer) => {
   });
 
   io.on("connection", (socket) => {
+    metricsService.incrementSocketConnections();
     socket.join(`user:${socket.user.id}`);
     socket.join(`${socket.user.role}:${socket.user.id}`);
 
@@ -82,6 +84,10 @@ const initializeSocket = (httpServer) => {
       userId: socket.user.id,
       role: socket.user.role,
       connectedAt: new Date().toISOString(),
+    });
+
+    socket.on("disconnect", () => {
+      metricsService.decrementSocketConnections();
     });
   });
 

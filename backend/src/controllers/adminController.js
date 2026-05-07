@@ -26,10 +26,42 @@ const invalidateAdminUsersCache = () => {
   responseCache.invalidateByTags([adminUsersTag, doctorDirectoryTag]);
 };
 
+const encodeUserCursor = (user) =>
+  Buffer.from(
+    JSON.stringify({
+      id: user._id.toString(),
+      createdAt: user.createdAt,
+    })
+  ).toString("base64url");
+
+const decodeUserCursor = (cursor) => {
+  if (!cursor) {
+    return null;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    const createdAt = new Date(decoded.createdAt);
+
+    if (
+      !/^[0-9a-fA-F]{24}$/.test(decoded.id) ||
+      Number.isNaN(createdAt.getTime())
+    ) {
+      throw new Error("Invalid cursor");
+    }
+
+    return {
+      id: decoded.id,
+      createdAt,
+    };
+  } catch {
+    throw new ApiError(400, "Invalid pagination cursor");
+  }
+};
+
 const listUsers = catchAsync(async (req, res) => {
-  const page = Number(req.query.page);
   const limit = Number(req.query.limit);
-  const skip = (page - 1) * limit;
+  const decodedCursor = decodeUserCursor(req.query.cursor);
   const filter = {};
 
   if (req.query.role && req.query.role !== "all") {
@@ -49,31 +81,40 @@ const listUsers = catchAsync(async (req, res) => {
     filter.$or = [{ name: safeSearchRegex }, { email: safeSearchRegex }];
   }
 
+  const queryFilter = { ...filter };
+
+  if (decodedCursor) {
+    queryFilter._id = { $lt: decodedCursor.id };
+  }
+
   const cachedPayload = await responseCache.remember(
     `admin:users:${JSON.stringify(req.query)}`,
     30 * 1000,
     async () => {
-      const [users, totalUsers] = await Promise.all([
-        User.find(filter)
+      const [fetchedUsers, totalUsers] = await Promise.all([
+        User.find(queryFilter)
           .select(
             "name email role specialty phone emailVerified doctorVerification createdAt updatedAt"
           )
           .sort({ createdAt: -1, _id: -1 })
-          .skip(skip)
-          .limit(limit)
+          .limit(limit + 1)
           .lean(),
         User.countDocuments(filter),
       ]);
+      const users = fetchedUsers.slice(0, limit);
+      const nextCursor =
+        fetchedUsers.length > limit && users.length
+          ? encodeUserCursor(users[users.length - 1])
+          : null;
 
       return {
         users,
+        nextCursor,
         pagination: {
-          page,
           limit,
           total: totalUsers,
-          totalPages: totalUsers > 0 ? Math.ceil(totalUsers / limit) : 1,
-          hasNextPage: skip + users.length < totalUsers,
-          hasPreviousPage: page > 1,
+          nextCursor,
+          hasNextPage: Boolean(nextCursor),
         },
         lastModified: users[0]?.updatedAt || users[0]?.createdAt || null,
       };
@@ -89,6 +130,7 @@ const listUsers = catchAsync(async (req, res) => {
   applyLastModified(res, cachedPayload.lastModified);
   res.json({
     users: cachedPayload.users,
+    nextCursor: cachedPayload.nextCursor,
     pagination: cachedPayload.pagination,
   });
 });

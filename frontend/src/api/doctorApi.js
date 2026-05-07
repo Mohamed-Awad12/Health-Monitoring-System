@@ -21,8 +21,14 @@ export const getDoctorPatientAlerts = (patientId, status = "all") =>
 export const acknowledgeDoctorAlert = (alertId) =>
   api.patch(`/doctors/alerts/${alertId}/acknowledge`);
 
+export const saveDoctorAlertNote = (alertId, payload) =>
+  api.patch(`/doctors/alerts/${alertId}/note`, payload);
+
 export const approveDoctorAssignment = (assignmentId) =>
   api.patch(`/doctors/assignments/${assignmentId}/approve`);
 
 export const denyDoctorAssignment = (assignmentId) =>
   api.patch(`/doctors/assignments/${assignmentId}/deny`);
+
+export const updateDoctorAssignmentThresholds = (assignmentId, payload) =>
+  api.patch(`/doctors/assignments/${assignmentId}/thresholds`, payload);

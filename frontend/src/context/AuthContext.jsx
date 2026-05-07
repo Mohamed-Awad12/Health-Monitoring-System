@@ -5,6 +5,7 @@ import {
   registerDoctor,
   registerPatient,
   logout as logoutRequest,
+  verifyTwoFactor as verifyTwoFactorRequest,
 } from "../api/authApi";
 
 export const AuthContext = createContext(null);
@@ -34,6 +35,26 @@ export function AuthProvider({ children }) {
       window.localStorage.removeItem("pulse_user");
     }
   }, [user]);
+
+  useEffect(() => {
+    const handleSessionRefreshed = (event) => {
+      const refreshedSession = event.detail || {};
+
+      if (refreshedSession.token) {
+        setToken(refreshedSession.token);
+      }
+
+      if (refreshedSession.user) {
+        setUser(refreshedSession.user);
+      }
+    };
+
+    window.addEventListener("pulse:session-refreshed", handleSessionRefreshed);
+
+    return () => {
+      window.removeEventListener("pulse:session-refreshed", handleSessionRefreshed);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -85,6 +106,19 @@ export function AuthProvider({ children }) {
 
   const login = async (credentials) => {
     const { data } = await loginRequest(credentials);
+
+    if (data.requiresTwoFactor) {
+      setToken(null);
+      setUser(null);
+      return data;
+    }
+
+    applySession(data);
+    return data.user;
+  };
+
+  const verifyTwoFactor = async (payload) => {
+    const { data } = await verifyTwoFactorRequest(payload);
     applySession(data);
     return data.user;
   };
@@ -117,6 +151,7 @@ export function AuthProvider({ children }) {
         token,
         loading,
         login,
+        verifyTwoFactor,
         register,
         logout,
         updateCurrentUser,

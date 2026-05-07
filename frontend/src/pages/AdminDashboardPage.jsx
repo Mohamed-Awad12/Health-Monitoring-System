@@ -30,6 +30,8 @@ const defaultFormState = {
   emailVerified: false,
 };
 
+const ADMIN_USERS_LIMIT = 20;
+
 const mapRoleToStatus = (role) => {
   if (role === "admin") {
     return "critical";
@@ -68,7 +70,9 @@ export default function AdminDashboardPage() {
   const [doctorVerificationFilter, setDoctorVerificationFilter] = useState("all");
   const [users, setUsers] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
+  const [nextCursor, setNextCursor] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [reviewingId, setReviewingId] = useState("");
@@ -81,9 +85,15 @@ export default function AdminDashboardPage() {
     async (
       searchValue = search,
       nextRoleFilter = roleFilter,
-      nextDoctorVerificationFilter = doctorVerificationFilter
+      nextDoctorVerificationFilter = doctorVerificationFilter,
+      cursor = null,
+      append = false
     ) => {
-      setLoading(true);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       setError("");
 
       try {
@@ -91,18 +101,27 @@ export default function AdminDashboardPage() {
           search: searchValue.trim() || undefined,
           role: nextRoleFilter,
           doctorVerificationStatus: nextDoctorVerificationFilter,
-          page: 1,
-          limit: 100,
+          cursor: cursor || undefined,
+          limit: ADMIN_USERS_LIMIT,
         });
 
         const nextUsers = response.data?.users || [];
 
-        setUsers(nextUsers);
+        setUsers((currentUsers) =>
+          append ? [...currentUsers, ...nextUsers] : nextUsers
+        );
         setTotalUsers(response.data?.pagination?.total ?? nextUsers.length);
+        setNextCursor(
+          response.data?.nextCursor || response.data?.pagination?.nextCursor || null
+        );
       } catch (requestError) {
         setError(requestError.response?.data?.message || t("admin.loadFailed"));
       } finally {
-        setLoading(false);
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
       }
     },
     [doctorVerificationFilter, roleFilter, search, t]
@@ -132,7 +151,6 @@ export default function AdminDashboardPage() {
       specialty: nextUser.specialty || "",
       emailVerified: Boolean(nextUser.emailVerified),
     });
-    setActionMessage("");
     setError("");
   };
 
@@ -300,6 +318,20 @@ export default function AdminDashboardPage() {
     setSearch("");
     setRoleFilter("all");
     setDoctorVerificationFilter("all");
+  };
+
+  const handleLoadMoreUsers = () => {
+    if (!nextCursor || loadingMore) {
+      return;
+    }
+
+    loadUsers(
+      search,
+      roleFilter,
+      doctorVerificationFilter,
+      nextCursor,
+      true
+    ).catch(() => {});
   };
 
   const counts = useMemo(() => {
@@ -598,12 +630,13 @@ export default function AdminDashboardPage() {
                 description={t("admin.noUsersDescription")}
               />
             ) : (
-              <div className="admin-users-list">
-                {users.map((nextUser) => {
-                  const isSelf = currentUser?._id === nextUser._id;
+              <>
+                <div className="admin-users-list">
+                  {users.map((nextUser) => {
+                    const isSelf = currentUser?._id === nextUser._id;
 
-                  return (
-                    <article key={nextUser._id} className="admin-user-card">
+                    return (
+                      <article key={nextUser._id} className="admin-user-card">
                       <div className="admin-user-card-head">
                         <div>
                           <strong>{nextUser.name}</strong>
@@ -735,10 +768,24 @@ export default function AdminDashboardPage() {
                             : t("admin.delete")}
                         </button>
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {nextCursor ? (
+                  <div className="admin-users-footer">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      disabled={loadingMore}
+                      onClick={handleLoadMoreUsers}
+                    >
+                      {loadingMore ? t("common.loading") : t("admin.loadMoreUsers")}
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
           </SectionCard>
         </div>

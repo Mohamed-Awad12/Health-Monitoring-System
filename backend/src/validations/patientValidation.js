@@ -10,6 +10,16 @@ const linkDeviceSchema = z.object({
   label: optionalPlainTextString("label", 80),
 });
 
+const rotateDeviceSecretSchema = z.object({}).strict();
+
+const pushSubscriptionSchema = z.object({
+  endpoint: z.string().trim().url().max(2048),
+  keys: z.object({
+    auth: z.string().trim().min(8).max(512),
+    p256dh: z.string().trim().min(8).max(512),
+  }),
+});
+
 const assignDoctorSchema = z.object({
   doctorId: objectIdSchema,
 });
@@ -50,6 +60,8 @@ const assignmentParamsSchema = z.object({
 module.exports = {
   objectIdSchema,
   linkDeviceSchema,
+  rotateDeviceSecretSchema,
+  pushSubscriptionSchema,
   assignDoctorSchema,
   doctorListQuerySchema,
   patientDashboardQuerySchema,

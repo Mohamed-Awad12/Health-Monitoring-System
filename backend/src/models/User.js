@@ -40,6 +40,16 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    refreshToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    refreshTokenExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
     password: {
       type: String,
       required: true,
@@ -61,6 +71,47 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       maxlength: 25,
+    },
+    twoFactorEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    twoFactorSecret: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    pushSubscriptions: {
+      type: [
+        {
+          endpoint: {
+            type: String,
+            required: true,
+            trim: true,
+          },
+          keys: {
+            auth: {
+              type: String,
+              required: true,
+              trim: true,
+            },
+            p256dh: {
+              type: String,
+              required: true,
+              trim: true,
+            },
+          },
+          createdAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+      validate: {
+        validator: (subscriptions) => subscriptions.length <= 5,
+        message: "pushSubscriptions cannot exceed 5 entries",
+      },
     },
     doctorVerification: {
       status: {
@@ -116,6 +167,10 @@ const userSchema = new mongoose.Schema(
         delete ret.emailVerificationExpiresAt;
         delete ret.passwordResetTokenHash;
         delete ret.passwordResetExpiresAt;
+        delete ret.refreshToken;
+        delete ret.refreshTokenExpiresAt;
+        delete ret.twoFactorSecret;
+        delete ret.pushSubscriptions;
         return ret;
       },
     },

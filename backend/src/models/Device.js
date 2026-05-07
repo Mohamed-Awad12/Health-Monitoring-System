@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+const crypto = require("crypto");
+
+const hashDeviceSecret = (value) =>
+  crypto.createHash("sha256").update(String(value)).digest("hex");
 
 const deviceSchema = new mongoose.Schema(
   {
@@ -35,5 +39,17 @@ const deviceSchema = new mongoose.Schema(
 
 deviceSchema.index({ patient: 1, updatedAt: -1 });
 deviceSchema.index({ patient: 1, isActive: 1 });
+
+deviceSchema.statics.hashSecret = hashDeviceSecret;
+
+deviceSchema.statics.secretLookupFilter = function secretLookupFilter(secret) {
+  const normalizedSecret = String(secret || "").trim();
+
+  return {
+    deviceSecretId: {
+      $in: [normalizedSecret, hashDeviceSecret(normalizedSecret)],
+    },
+  };
+};
 
 module.exports = mongoose.model("Device", deviceSchema);

@@ -3,6 +3,8 @@ import api from "./axios";
 export const getDoctors = (params = {}) =>
   api.get("/patients/doctors", { params });
 export const linkDevice = (payload) => api.patch("/patients/device/link", payload);
+export const rotateDeviceSecret = () =>
+  api.post("/patients/device/rotate-secret", {});
 export const assignDoctor = (payload) =>
   api.post("/patients/doctor-assignment", payload);
 export const unassignDoctor = (assignmentId) =>

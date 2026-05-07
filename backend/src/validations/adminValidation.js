@@ -14,7 +14,7 @@ const userListQuerySchema = z.object({
   doctorVerificationStatus: z
     .enum(["all", "not_submitted", "pending", "approved", "rejected"])
     .default("all"),
-  page: z.coerce.number().int().min(1).default(1),
+  cursor: z.string().trim().min(1).max(500).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 

@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+const { getIO } = require("../config/socket");
 const Alert = require("../models/Alert");
 const Device = require("../models/Device");
 const DoctorPatient = require("../models/DoctorPatient");
@@ -9,6 +11,10 @@ const {
   generateHealthAssistantReport,
 } = require("../services/healthAssistantService");
 const { buildCsvReport, buildPdfReport } = require("../services/reportService");
+const {
+  registerSubscription,
+  unregisterSubscription,
+} = require("../services/pushNotificationService");
 const {
   doctorDirectoryTag,
   doctorScopeTag,
@@ -51,48 +57,48 @@ const listDoctors = catchAsync(async (req, res) => {
   const search = req.query.search?.trim() || "";
   const page = Number(req.query.page || 1);
   const limit = Number(req.query.limit || 12);
-
-  if (!search) {
-    setCachingHeaders(res, {
-      scope: "private",
-      maxAge: 30,
-      staleWhileRevalidate: 30,
-    });
-    return res.json({
-      doctors: [],
-      pagination: {
-        page: 1,
-        limit,
-        total: 0,
-        totalPages: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
-      },
-    });
-  }
-
-  const skip = (page - 1) * limit;
+  const hasSearch = Boolean(search);
+  const skip = hasSearch ? (page - 1) * limit : 0;
   const filter = {
     role: ROLES.DOCTOR,
     emailVerified: true,
     "doctorVerification.status": "approved",
   };
-  const safeSearchRegex = new RegExp(`^${escapeRegex(search)}`, "i");
-  filter.name = safeSearchRegex;
+
+  if (hasSearch) {
+    const safeSearchRegex = new RegExp(`^${escapeRegex(search)}`, "i");
+    filter.name = safeSearchRegex;
+  }
 
   const cachedPayload = await responseCache.remember(
     `patient:${req.user._id}:doctor-directory:${search}:${page}:${limit}`,
     env.DIRECTORY_CACHE_TTL_SECONDS * 1000,
     async () => {
-      const [doctors, totalDoctors] = await Promise.all([
-        User.find(filter)
-          .select("name email specialty updatedAt")
-          .sort({ name: 1, _id: 1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        User.countDocuments(filter),
-      ]);
+      let doctors = [];
+      let totalDoctors = 0;
+
+      if (hasSearch) {
+        [doctors, totalDoctors] = await Promise.all([
+          User.find(filter)
+            .select("name email specialty updatedAt")
+            .sort({ name: 1, _id: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+          User.countDocuments(filter),
+        ]);
+      } else {
+        doctors = await User.find(filter)
+          .select("name email specialty updatedAt doctorVerification.reviewedAt")
+          .sort({ "doctorVerification.reviewedAt": -1, createdAt: -1, _id: -1 })
+          .limit(6)
+          .lean();
+
+        doctors.sort((firstDoctor, secondDoctor) =>
+          String(firstDoctor.name || "").localeCompare(String(secondDoctor.name || ""))
+        );
+        totalDoctors = doctors.length;
+      }
 
       const doctorIds = doctors.map((doctor) => doctor._id);
       const relations = doctorIds.length
@@ -133,12 +139,12 @@ const listDoctors = catchAsync(async (req, res) => {
       return {
         doctors: payload,
         pagination: {
-          page,
-          limit,
+          page: hasSearch ? page : 1,
+          limit: hasSearch ? limit : 6,
           total: totalDoctors,
           totalPages: totalDoctors > 0 ? Math.ceil(totalDoctors / limit) : 1,
-          hasNextPage: skip + payload.length < totalDoctors,
-          hasPreviousPage: page > 1,
+          hasNextPage: hasSearch && skip + payload.length < totalDoctors,
+          hasPreviousPage: hasSearch && page > 1,
         },
         lastModified: getLatestDate(
           doctors.map((doctor) => doctor.updatedAt),
@@ -163,7 +169,9 @@ const listDoctors = catchAsync(async (req, res) => {
 
 const linkDevice = catchAsync(async (req, res) => {
   const { deviceSecretId, label } = req.body;
-  let device = await Device.findOne({ deviceSecretId }).select("+deviceSecretId");
+  let device = await Device.findOne(Device.secretLookupFilter(deviceSecretId)).select(
+    "+deviceSecretId"
+  );
 
   if (device?.patient && device.patient.toString() !== req.user._id.toString()) {
     throw new ApiError(409, "This device is already linked to another patient");
@@ -171,7 +179,7 @@ const linkDevice = catchAsync(async (req, res) => {
 
   if (!device) {
     device = await Device.create({
-      deviceSecretId,
+      deviceSecretId: Device.hashSecret(deviceSecretId),
       patient: req.user._id,
       label: label || "Primary Pulse Oximeter",
     });
@@ -203,6 +211,42 @@ const linkDevice = catchAsync(async (req, res) => {
       isActive: device.isActive,
       lastSeenAt: device.lastSeenAt,
     },
+  });
+});
+
+const rotateDeviceSecret = catchAsync(async (req, res) => {
+  const device = await Device.findOne({
+    patient: req.user._id,
+    isActive: true,
+  }).select("+deviceSecretId");
+
+  if (!device) {
+    throw new ApiError(404, "No active device found for this patient");
+  }
+
+  const newDeviceSecretId = crypto.randomBytes(24).toString("hex");
+  const rotatedAt = new Date();
+
+  device.deviceSecretId = Device.hashSecret(newDeviceSecretId);
+  await device.save();
+
+  invalidatePatientCache(req.user._id);
+
+  const io = getIO();
+
+  if (io) {
+    io.to(`patient:${req.user._id}`).emit("device:secret-rotated", {
+      patientId: req.user._id,
+      deviceId: device._id,
+      rotatedAt,
+    });
+  }
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Device secret rotated successfully",
+    deviceSecretId: newDeviceSecretId,
+    rotatedAt,
   });
 });
 
@@ -436,9 +480,33 @@ const generateAssistantReport = catchAsync(async (req, res) => {
   res.json(result);
 });
 
+const subscribePush = catchAsync(async (req, res) => {
+  const subscription = await registerSubscription(req.user._id, req.body);
+
+  if (!subscription) {
+    throw new ApiError(404, "User not found");
+  }
+
+  setNoStoreHeaders(res);
+  res.status(201).json({
+    message: "Push subscription registered",
+    subscription,
+  });
+});
+
+const unsubscribePush = catchAsync(async (req, res) => {
+  await unregisterSubscription(req.user._id, req.body.endpoint);
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Push subscription removed",
+  });
+});
+
 module.exports = {
   listDoctors,
   linkDevice,
+  rotateDeviceSecret,
   assignDoctor,
   unassignDoctor,
   getDashboard,
@@ -447,4 +515,6 @@ module.exports = {
   acknowledgeAlert,
   downloadReport,
   generateAssistantReport,
+  subscribePush,
+  unsubscribePush,
 };

@@ -15,7 +15,7 @@ const { setNoStoreHeaders } = require("../utils/httpCache");
 const ingestReading = catchAsync(async (req, res) => {
   const { deviceSecretId, spo2, bpm, timestamp } = req.body;
   const device = await Device.findOne({
-    deviceSecretId,
+    ...Device.secretLookupFilter(deviceSecretId),
     isActive: true,
   }).select("+deviceSecretId");
 
@@ -24,9 +24,6 @@ const ingestReading = catchAsync(async (req, res) => {
       severity: "warning",
       type: "unknown_or_inactive_device_ingest_attempt",
       req,
-      details: {
-        deviceSecretId,
-      },
     });
     throw new ApiError(401, "Unknown or inactive device");
   }

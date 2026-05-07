@@ -48,6 +48,16 @@ const alertSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    doctorNote: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
+    },
+    notedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

@@ -1,8 +1,11 @@
 const { ZodError } = require("zod");
+const metricsService = require("../services/metricsService");
 const { logSecurityEvent } = require("../services/securityEventLogger");
 const { setNoStoreHeaders } = require("../utils/httpCache");
 
 const errorHandler = (error, req, res, _next) => {
+  metricsService.incrementTotalErrors();
+
   if (error.code === "LIMIT_FILE_SIZE") {
     setNoStoreHeaders(res);
     return res.status(400).json({

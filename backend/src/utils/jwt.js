@@ -11,9 +11,22 @@ const signToken = (user) =>
     { expiresIn: env.JWT_EXPIRES_IN }
   );
 
+const signRefreshToken = (userId) =>
+  jwt.sign(
+    {
+      sub: userId.toString(),
+      type: "refresh",
+    },
+    env.REFRESH_TOKEN_SECRET,
+    { expiresIn: env.REFRESH_TOKEN_EXPIRES_IN }
+  );
+
 const verifyToken = (token) => jwt.verify(token, env.JWT_SECRET);
+const verifyRefreshToken = (token) => jwt.verify(token, env.REFRESH_TOKEN_SECRET);
 
 module.exports = {
+  signRefreshToken,
   signToken,
+  verifyRefreshToken,
   verifyToken,
 };

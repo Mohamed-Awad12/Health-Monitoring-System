@@ -12,10 +12,24 @@ const { deleteUserAccount } = require("../services/accountService");
 const { logSecurityEvent } = require("../services/securityEventLogger");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
-const { clearCsrfCookie, clearAuthCookie, setAuthCookie } = require("../utils/cookies");
+const {
+  REFRESH_COOKIE_NAME,
+  clearCsrfCookie,
+  clearAuthCookie,
+  clearRefreshCookie,
+  parseCookies,
+  setAuthCookie,
+  setRefreshCookie,
+} = require("../utils/cookies");
 const { setNoStoreHeaders } = require("../utils/httpCache");
-const { signToken } = require("../utils/jwt");
+const { signRefreshToken, signToken, verifyRefreshToken } = require("../utils/jwt");
 const { issueCsrfToken } = require("../middlewares/csrf");
+const {
+  createTwoFactorChallenge,
+  roleSupportsTwoFactor,
+  verifyTwoFactorOtp,
+  verifyTwoFactorTempToken,
+} = require("../services/totpService");
 
 const validateAdminBootstrapToken = (token) => {
   if (!env.ADMIN_BOOTSTRAP_TOKEN) {
@@ -36,11 +50,66 @@ const normalizeOptionalString = (value) => {
   return normalized || undefined;
 };
 
-const establishSession = (req, res, user) => {
+const parseExpirationMs = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  const match = normalized.match(/^(\d+)(ms|s|m|h|d)?$/);
+
+  if (!match) {
+    return 30 * 24 * 60 * 60 * 1000;
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2] || "ms";
+  const multipliers = {
+    ms: 1,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+  };
+
+  return amount * multipliers[unit];
+};
+
+const buildRefreshTokenExpiry = () =>
+  new Date(Date.now() + parseExpirationMs(env.REFRESH_TOKEN_EXPIRES_IN));
+
+const assertLoginAllowed = (user, options = {}) => {
+  if (!user.emailVerified) {
+    throw new ApiError(
+      403,
+      options.emailMessage || "Please verify your email before logging in."
+    );
+  }
+
+  if (
+    user.role === ROLES.DOCTOR &&
+    user.doctorVerification?.status &&
+    user.doctorVerification.status !== "approved"
+  ) {
+    throw new ApiError(
+      403,
+      "Doctor account is pending admin approval. Upload verification and wait for approval."
+    );
+  }
+};
+
+const establishSession = async (req, res, user) => {
   const token = signToken(user);
+  const refreshToken = signRefreshToken(user._id);
+  const refreshTokenExpiresAt = buildRefreshTokenExpiry();
   const csrfToken = issueCsrfToken(req, res);
 
+  user.refreshToken = hashValue(refreshToken);
+  user.refreshTokenExpiresAt = refreshTokenExpiresAt;
+  await user.save({ validateBeforeSave: false });
+
   setAuthCookie(res, token);
+  setRefreshCookie(
+    res,
+    refreshToken,
+    Math.max(refreshTokenExpiresAt.getTime() - Date.now(), 0)
+  );
 
   return {
     token,
@@ -50,6 +119,7 @@ const establishSession = (req, res, user) => {
 
 const revokeSession = (res) => {
   clearAuthCookie(res);
+  clearRefreshCookie(res);
   clearCsrfCookie(res);
 };
 
@@ -141,22 +211,116 @@ const login = catchAsync(async (req, res) => {
     );
   }
 
-  if (
-    user.role === ROLES.DOCTOR &&
-    user.doctorVerification?.status &&
-    user.doctorVerification.status !== "approved"
-  ) {
-    throw new ApiError(
-      403,
-      "Doctor account is pending admin approval. Upload verification and wait for approval."
-    );
+  assertLoginAllowed(user);
+
+  if (user.twoFactorEnabled && roleSupportsTwoFactor(user.role)) {
+    const tempToken = await createTwoFactorChallenge(user);
+
+    if (!tempToken) {
+      throw new ApiError(500, "Failed to send two-factor authentication OTP");
+    }
+
+    setNoStoreHeaders(res);
+    res.json({
+      requiresTwoFactor: true,
+      tempToken,
+    });
+    return;
   }
 
-  const session = establishSession(req, res, user);
+  const session = await establishSession(req, res, user);
 
   setNoStoreHeaders(res);
   res.json({
     message: "Login successful",
+    token: session.token,
+    csrfToken: session.csrfToken,
+    user: user.toJSON(),
+    emailVerification: {
+      verified: user.emailVerified,
+    },
+  });
+});
+
+const refresh = catchAsync(async (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const refreshToken = cookies[REFRESH_COOKIE_NAME];
+
+  if (!refreshToken) {
+    throw new ApiError(401, "Refresh token is required");
+  }
+
+  let decoded;
+
+  try {
+    decoded = verifyRefreshToken(refreshToken);
+  } catch {
+    throw new ApiError(401, "Invalid refresh token");
+  }
+
+  if (decoded.type !== "refresh") {
+    throw new ApiError(401, "Invalid refresh token");
+  }
+
+  const user = await User.findById(decoded.sub).select(
+    "+refreshToken +refreshTokenExpiresAt"
+  );
+
+  if (
+    !user ||
+    !user.refreshToken ||
+    !user.refreshTokenExpiresAt ||
+    user.refreshTokenExpiresAt <= new Date() ||
+    user.refreshToken !== hashValue(refreshToken)
+  ) {
+    throw new ApiError(401, "Invalid refresh token");
+  }
+
+  assertLoginAllowed(user, {
+    emailMessage: "Please verify your email before refreshing your session.",
+  });
+
+  const session = await establishSession(req, res, user);
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Session refreshed",
+    token: session.token,
+    csrfToken: session.csrfToken,
+    user: user.toJSON(),
+    emailVerification: {
+      verified: user.emailVerified,
+    },
+  });
+});
+
+const verifyTwoFactor = catchAsync(async (req, res) => {
+  let decoded;
+
+  try {
+    decoded = verifyTwoFactorTempToken(req.body.tempToken);
+  } catch {
+    throw new ApiError(401, "Invalid or expired two-factor session");
+  }
+
+  const user = await User.findById(decoded.sub).select("+twoFactorSecret");
+
+  if (!user || !user.twoFactorEnabled || !roleSupportsTwoFactor(user.role)) {
+    throw new ApiError(401, "Invalid or expired two-factor session");
+  }
+
+  assertLoginAllowed(user);
+
+  if (!verifyTwoFactorOtp(user, req.body.otp)) {
+    throw new ApiError(400, "Invalid two-factor authentication code");
+  }
+
+  user.twoFactorSecret = null;
+  const session = await establishSession(req, res, user);
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: "Two-factor authentication verified",
     token: session.token,
     csrfToken: session.csrfToken,
     user: user.toJSON(),
@@ -269,7 +433,7 @@ const registerAdminBootstrap = catchAsync(async (req, res) => {
   });
   responseCache.invalidateByTags([adminUsersTag]);
 
-  const session = establishSession(req, res, user);
+  const session = await establishSession(req, res, user);
 
   setNoStoreHeaders(res);
   res.status(201).json({
@@ -293,7 +457,7 @@ const getCurrentUser = catchAsync(async (req, res) => {
 
 const updateCurrentUser = catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).select(
-    "+emailVerificationTokenHash +emailVerificationExpiresAt"
+    "+emailVerificationTokenHash +emailVerificationExpiresAt +refreshToken +refreshTokenExpiresAt"
   );
 
   if (!user) {
@@ -327,6 +491,8 @@ const updateCurrentUser = catchAsync(async (req, res) => {
     user.emailVerified = false;
     user.emailVerificationTokenHash = null;
     user.emailVerificationExpiresAt = null;
+    user.refreshToken = null;
+    user.refreshTokenExpiresAt = null;
 
     const emailSent = await sendEmailVerificationOtp(user);
     responseCache.invalidateByTags([adminUsersTag, doctorDirectoryTag]);
@@ -358,6 +524,30 @@ const updateCurrentUser = catchAsync(async (req, res) => {
     emailVerification: {
       verified: user.emailVerified,
     },
+  });
+});
+
+const updateCurrentUserTwoFactor = catchAsync(async (req, res) => {
+  const user = await User.findById(req.user._id).select("+twoFactorSecret");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!roleSupportsTwoFactor(user.role)) {
+    throw new ApiError(403, "Two-factor authentication is only available for doctors and admins");
+  }
+
+  user.twoFactorEnabled = req.body.enabled;
+  user.twoFactorSecret = null;
+  await user.save({ validateBeforeSave: false });
+
+  setNoStoreHeaders(res);
+  res.json({
+    message: user.twoFactorEnabled
+      ? "Two-factor authentication enabled"
+      : "Two-factor authentication disabled",
+    user: user.toJSON(),
   });
 });
 
@@ -461,12 +651,12 @@ const resetPassword = catchAsync(async (req, res) => {
     user = await User.findOne({
       passwordResetTokenHash: hashedToken,
       passwordResetExpiresAt: { $gt: now },
-    });
+    }).select("+refreshToken +refreshTokenExpiresAt");
   } else {
     const normalizedEmail = req.body.email.trim().toLowerCase();
     user = await User.findOne({
       email: normalizedEmail,
-    }).select("+passwordResetTokenHash +passwordResetExpiresAt");
+    }).select("+passwordResetTokenHash +passwordResetExpiresAt +refreshToken +refreshTokenExpiresAt");
 
     if (
       !user ||
@@ -486,6 +676,8 @@ const resetPassword = catchAsync(async (req, res) => {
   user.password = req.body.password;
   user.passwordResetTokenHash = undefined;
   user.passwordResetExpiresAt = undefined;
+  user.refreshToken = null;
+  user.refreshTokenExpiresAt = null;
   await user.save();
   revokeSession(res);
 
@@ -495,7 +687,14 @@ const resetPassword = catchAsync(async (req, res) => {
   });
 });
 
-const logout = catchAsync(async (_req, res) => {
+const logout = catchAsync(async (req, res) => {
+  await User.findByIdAndUpdate(req.user._id, {
+    $set: {
+      refreshToken: null,
+      refreshTokenExpiresAt: null,
+    },
+  });
+
   revokeSession(res);
   setNoStoreHeaders(res);
 
@@ -509,13 +708,16 @@ module.exports = {
   deleteCurrentUser,
   forgotPassword,
   logout,
+  refresh,
   resetPassword,
   registerAdminBootstrap,
   registerPatient: register(ROLES.PATIENT),
   registerDoctor: register(ROLES.DOCTOR),
   login,
+  verifyTwoFactor,
   verifyEmail,
   resendVerificationEmail,
   getCurrentUser,
   updateCurrentUser,
+  updateCurrentUserTwoFactor,
 };

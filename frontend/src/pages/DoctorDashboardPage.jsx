@@ -6,6 +6,8 @@ import {
   getAssignedPatients,
   getDoctorPatientAlerts,
   getDoctorPatientDashboard,
+  saveDoctorAlertNote,
+  updateDoctorAssignmentThresholds,
 } from "../api/doctorApi";
 import AppShell from "../components/layout/AppShell";
 import AlertList from "../components/ui/AlertList";
@@ -52,12 +54,19 @@ export default function DoctorDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [decisionLoadingId, setDecisionLoadingId] = useState("");
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdForm, setThresholdForm] = useState({
+    lowSpo2: "",
+    lowBpm: "",
+    highBpm: "",
+  });
   const [error, setError] = useState("");
   const chartFallback = (
     <div className="chart-wrapper live-chart screen-center" aria-hidden="true">
       <div className="loading-dot" />
     </div>
   );
+  const selectedPatient = patients.find((patient) => patient._id === selectedPatientId);
 
   const loadPatients = async (searchValue = search) => {
     const response = await getAssignedPatients(searchValue);
@@ -118,6 +127,16 @@ export default function DoctorDashboardPage() {
   }, [selectedPatientId, range, t]);
 
   useEffect(() => {
+    const thresholds = selectedPatient?.thresholds || {};
+
+    setThresholdForm({
+      lowSpo2: thresholds.lowSpo2 ?? "",
+      lowBpm: thresholds.lowBpm ?? "",
+      highBpm: thresholds.highBpm ?? "",
+    });
+  }, [selectedPatient]);
+
+  useEffect(() => {
     if (!socket) {
       return undefined;
     }
@@ -136,10 +155,12 @@ export default function DoctorDashboardPage() {
 
     socket.on("reading:new", refreshCurrentPatient);
     socket.on("alert:new", refreshCurrentPatient);
+    socket.on("alert:note-updated", refreshCurrentPatient);
 
     return () => {
       socket.off("reading:new", refreshCurrentPatient);
       socket.off("alert:new", refreshCurrentPatient);
+      socket.off("alert:note-updated", refreshCurrentPatient);
     };
   }, [socket, search, selectedPatientId, range]);
 
@@ -150,6 +171,61 @@ export default function DoctorDashboardPage() {
       await loadPatients(search);
     } catch (requestError) {
       setError(requestError.response?.data?.message || t("doctor.acknowledgeFailed"));
+    }
+  };
+
+  const handleSaveAlertNote = async (alertId, note) => {
+    try {
+      const response = await saveDoctorAlertNote(alertId, { note });
+      const updatedAlert = response.data?.alert;
+
+      if (updatedAlert) {
+        setAlerts((currentAlerts) =>
+          currentAlerts.map((alert) =>
+            (alert._id || alert.id) === (updatedAlert._id || updatedAlert.id)
+              ? updatedAlert
+              : alert
+          )
+        );
+      }
+
+      addToast({ type: "success", message: t("doctor.alertNoteSaved") });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || t("doctor.alertNoteFailed"));
+      throw requestError;
+    }
+  };
+
+  const normalizeThresholdValue = (value) => {
+    if (value === "") {
+      return null;
+    }
+
+    return Number(value);
+  };
+
+  const handleThresholdSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!selectedPatient?.assignmentId) {
+      return;
+    }
+
+    setThresholdSaving(true);
+    setError("");
+
+    try {
+      await updateDoctorAssignmentThresholds(selectedPatient.assignmentId, {
+        lowSpo2: normalizeThresholdValue(thresholdForm.lowSpo2),
+        lowBpm: normalizeThresholdValue(thresholdForm.lowBpm),
+        highBpm: normalizeThresholdValue(thresholdForm.highBpm),
+      });
+      addToast({ type: "success", message: t("doctor.thresholdsSaved") });
+      await loadPatients(search);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || t("doctor.thresholdsSaveFailed"));
+    } finally {
+      setThresholdSaving(false);
     }
   };
 
@@ -429,6 +505,76 @@ export default function DoctorDashboardPage() {
           </SectionCard>
 
           <SectionCard
+            id="doctor-thresholds"
+            title={t("doctor.thresholdSettings")}
+            className="requests-section"
+          >
+            <p className="section-note">{t("doctor.thresholdDescription")}</p>
+            <form className="form-stack" onSubmit={handleThresholdSubmit}>
+              <div className="admin-user-form-grid">
+                <label>
+                  {t("doctor.lowSpo2Threshold")}
+                  <input
+                    type="number"
+                    min="50"
+                    max="100"
+                    value={thresholdForm.lowSpo2}
+                    placeholder={t("doctor.useGlobalThreshold")}
+                    disabled={!selectedPatient?.assignmentId || thresholdSaving}
+                    onChange={(event) =>
+                      setThresholdForm((current) => ({
+                        ...current,
+                        lowSpo2: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  {t("doctor.lowBpmThreshold")}
+                  <input
+                    type="number"
+                    min="10"
+                    max="300"
+                    value={thresholdForm.lowBpm}
+                    placeholder={t("doctor.useGlobalThreshold")}
+                    disabled={!selectedPatient?.assignmentId || thresholdSaving}
+                    onChange={(event) =>
+                      setThresholdForm((current) => ({
+                        ...current,
+                        lowBpm: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  {t("doctor.highBpmThreshold")}
+                  <input
+                    type="number"
+                    min="10"
+                    max="300"
+                    value={thresholdForm.highBpm}
+                    placeholder={t("doctor.useGlobalThreshold")}
+                    disabled={!selectedPatient?.assignmentId || thresholdSaving}
+                    onChange={(event) =>
+                      setThresholdForm((current) => ({
+                        ...current,
+                        highBpm: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={!selectedPatient?.assignmentId || thresholdSaving}
+              >
+                {thresholdSaving ? t("common.loading") : t("doctor.saveThresholds")}
+              </button>
+            </form>
+          </SectionCard>
+
+          <SectionCard
             id="doctor-alerts"
             title={t("doctor.patientAlerts")}
             className="history-section"
@@ -436,7 +582,11 @@ export default function DoctorDashboardPage() {
             {loading || dashboardLoading ? (
               <AlertListSkeleton label={t("doctor.loadingPatientDashboard")} />
             ) : (
-              <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
+              <AlertList
+                alerts={alerts}
+                onAcknowledge={handleAcknowledge}
+                onSaveNote={handleSaveAlertNote}
+              />
             )}
           </SectionCard>
         </div>
