@@ -104,6 +104,9 @@ export default function App() {
         const stats = panel.querySelector('[data-parallax="stats"]');
         const narrative = panel.querySelector('[data-parallax="narrative"]');
         const projects = panel.querySelector('[data-parallax="projects"]');
+        const list = panel.querySelector('[data-parallax="list"]');
+        const media = panel.querySelector('[data-parallax="media"]');
+        const table = panel.querySelector('[data-parallax="table"]');
         const actionRow = panel.querySelector('[data-parallax="actions"]');
 
         ScrollTrigger.create({
@@ -291,6 +294,18 @@ export default function App() {
           );
         }
 
+        if (list) {
+          parallaxTimeline.fromTo(list, { yPercent: 14 }, { yPercent: -18, ease: "none" }, 0);
+        }
+
+        if (media) {
+          parallaxTimeline.fromTo(media, { yPercent: 18 }, { yPercent: -22, ease: "none" }, 0);
+        }
+
+        if (table) {
+          parallaxTimeline.fromTo(table, { yPercent: 16 }, { yPercent: -20, ease: "none" }, 0);
+        }
+
         if (actionRow) {
           parallaxTimeline.fromTo(
             actionRow,
@@ -326,12 +341,12 @@ export default function App() {
 
       <header className="floating-topbar">
         <div>
-          <p className="brand-kicker">Pulse</p>
-          <strong>Product Slides</strong>
+          <p className="brand-kicker">Portable Wireless</p>
+          <strong>Pulse Oximeter</strong>
         </div>
         <div className="topbar-meta">
-          <span>IoT health monitoring</span>
-          <span>Patients, doctors, and admin oversight</span>
+          <span>Remote Health Monitoring</span>
+          <span>Faculty of Engineering</span>
         </div>
       </header>
 
