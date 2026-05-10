@@ -36,6 +36,9 @@ const getDoctorVerificationPresentation = (status, t) => {
   };
 };
 
+const getPushErrorMessage = (requestError, fallbackMessage) =>
+  requestError.response?.data?.message || requestError.message || fallbackMessage;
+
 export default function ProfilePage() {
   const { user, logout, updateCurrentUser } = useAuth();
   const pushNotifications = usePushNotifications();
@@ -202,11 +205,12 @@ export default function ProfilePage() {
     } catch (requestError) {
       addToast({
         type: "error",
-        message:
-          requestError.response?.data?.message ||
-          (pushNotifications.isSubscribed
+        message: getPushErrorMessage(
+          requestError,
+          pushNotifications.isSubscribed
             ? t("profile.pushDisableFailed")
-            : t("profile.pushEnableFailed")),
+            : t("profile.pushEnableFailed")
+        ),
       });
     }
   };

@@ -128,7 +128,8 @@ export const translations = {
       twoFactorUpdateFailed: "Failed to update two-factor authentication",
       pushNotifications: "Web Push notifications",
       pushNotificationsHint: "Receive critical alert notifications from this browser.",
-      pushUnsupported: "Push notifications are not available in this browser or VAPID is not configured.",
+      pushUnsupported:
+        "Push notifications are not available here. Check browser support, HTTPS or localhost access, and VAPID configuration.",
       pushSubscribed: "Subscribed",
       pushNotSubscribed: "Not subscribed",
       enablePush: "Enable push",
@@ -650,7 +651,7 @@ export const translations = {
       pushNotifications: "إشعارات الويب الفورية",
       pushNotificationsHint: "استقبل إشعارات التنبيهات الحرجة من هذا المتصفح.",
       pushUnsupported:
-        "إشعارات الويب غير متاحة في هذا المتصفح أو لم يتم ضبط VAPID.",
+        "إشعارات الويب غير متاحة هنا. تحقّق من دعم المتصفح، واستخدام HTTPS أو localhost، وضبط VAPID.",
       pushSubscribed: "مشترك",
       pushNotSubscribed: "غير مشترك",
       enablePush: "تفعيل الإشعارات",
