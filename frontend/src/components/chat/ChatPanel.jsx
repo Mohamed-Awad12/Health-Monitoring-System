@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  buildConversationAttachmentUrl,
   getChatConversations,
   getConversationMessages,
   markConversationRead,
+  sendConversationAttachmentMessage,
   sendConversationMessage,
 } from "../../api/chatApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -10,7 +12,18 @@ import { useSocket } from "../../hooks/useSocket";
 import { useToast } from "../../hooks/useToast";
 import { useUiPreferences } from "../../hooks/useUiPreferences";
 import EmptyState from "../ui/EmptyState";
-import { FiClock, FiMessageSquare, FiSend } from "react-icons/fi";
+import {
+  FiClock,
+  FiDownload,
+  FiFileText,
+  FiImage,
+  FiMessageSquare,
+  FiMic,
+  FiPaperclip,
+  FiSend,
+  FiSquare,
+  FiX,
+} from "react-icons/fi";
 
 const ensureArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -104,11 +117,88 @@ const isNearBottom = (element, threshold = 96) => {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
 };
 
+const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+const DOCUMENT_FILE_ACCEPT =
+  ".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip,application/pdf,text/plain,text/csv";
+
+const getClientAttachmentKind = (file) => {
+  if (String(file?.type || "").startsWith("image/")) {
+    return "image";
+  }
+
+  if (String(file?.type || "").startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+};
+
+const getVoiceRecordingMimeType = () => {
+  if (typeof MediaRecorder === "undefined") {
+    return "";
+  }
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+    "audio/mp4",
+  ];
+
+  return (
+    candidates.find((mimeType) => MediaRecorder.isTypeSupported?.(mimeType)) || ""
+  );
+};
+
+const getVoiceRecordingExtension = (mimeType) => {
+  if (mimeType.includes("ogg")) {
+    return "ogg";
+  }
+
+  if (mimeType.includes("mp4")) {
+    return "m4a";
+  }
+
+  return "webm";
+};
+
+const formatRecordingDuration = (durationInSeconds) => {
+  const totalSeconds = Math.max(0, Math.floor(durationInSeconds));
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+
+  return `${minutes}:${seconds}`;
+};
+
+const formatAttachmentSize = (sizeBytes, formatNumber) => {
+  const size = Number(sizeBytes || 0);
+
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${formatNumber(value, {
+    maximumFractionDigits: value >= 10 || unitIndex === 0 ? 0 : 1,
+  })} ${units[unitIndex]}`;
+};
+
 export default function ChatPanel({ preferredParticipantId = "" }) {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { addToast } = useToast();
-  const { formatDateTime, t } = useUiPreferences();
+  const { formatDateTime, formatNumber, t } = useUiPreferences();
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messagesByConversation, setMessagesByConversation] = useState({});
@@ -118,14 +208,25 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
+  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
   const [error, setError] = useState("");
   const [typingState, setTypingState] = useState({});
   const remoteTypingTimeoutsRef = useRef({});
   const localTypingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const messagesListRef = useRef(null);
   const pendingPrependRestoreRef = useRef(null);
   const scrollToBottomOnNextRenderRef = useRef(false);
+  const mediaRecorderRef = useRef(null);
+  const recordingStreamRef = useRef(null);
+  const recordingChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const discardRecordingRef = useRef(false);
+  const pendingAttachmentRef = useRef(null);
   const isTypingRef = useRef(false);
   const pendingReadRef = useRef(false);
 
@@ -142,6 +243,33 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       hasMore: false,
       nextCursor: null,
     };
+
+  const replacePendingAttachment = (nextAttachment) => {
+    setPendingAttachment((currentAttachment) => {
+      if (
+        currentAttachment?.previewUrl &&
+        currentAttachment.previewUrl !== nextAttachment?.previewUrl
+      ) {
+        window.URL.revokeObjectURL(currentAttachment.previewUrl);
+      }
+
+      return nextAttachment;
+    });
+  };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const stopRecordingStream = () => {
+    if (recordingStreamRef.current) {
+      recordingStreamRef.current.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -474,6 +602,137 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     emitTypingState(false);
   };
 
+  const handleAttachmentSelection = (event, attachmentKind) => {
+    const nextFile = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!nextFile) {
+      return;
+    }
+
+    const resolvedKind = attachmentKind || getClientAttachmentKind(nextFile);
+    const previewUrl =
+      resolvedKind === "image" || resolvedKind === "audio"
+        ? window.URL.createObjectURL(nextFile)
+        : "";
+
+    replacePendingAttachment({
+      file: nextFile,
+      kind: resolvedKind,
+      previewUrl,
+      name: nextFile.name,
+      sizeBytes: nextFile.size,
+      mimeType: nextFile.type,
+    });
+  };
+
+  const handleRemoveAttachment = () => {
+    replacePendingAttachment(null);
+  };
+
+  const stopVoiceRecording = (discard = false) => {
+    const activeRecorder = mediaRecorderRef.current;
+
+    if (!activeRecorder || activeRecorder.state === "inactive") {
+      return;
+    }
+
+    discardRecordingRef.current = discard;
+    activeRecorder.stop();
+  };
+
+  const startVoiceRecording = async () => {
+    if (
+      typeof window === "undefined" ||
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      addToast({
+        type: "error",
+        message: t("chat.voiceUnsupported"),
+      });
+      return;
+    }
+
+    if (isRecording) {
+      stopVoiceRecording();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getVoiceRecordingMimeType();
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      discardRecordingRef.current = false;
+      recordingChunksRef.current = [];
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (recorderEvent) => {
+        if (recorderEvent.data?.size) {
+          recordingChunksRef.current.push(recorderEvent.data);
+        }
+      };
+      mediaRecorder.onstop = () => {
+        const recordedMimeType =
+          mediaRecorder.mimeType || mimeType || "audio/webm";
+        const recordedChunks = recordingChunksRef.current;
+        const shouldDiscard = discardRecordingRef.current;
+
+        stopRecordingTimer();
+        stopRecordingStream();
+        mediaRecorderRef.current = null;
+        recordingChunksRef.current = [];
+        discardRecordingRef.current = false;
+        setIsRecording(false);
+
+        if (shouldDiscard || !recordedChunks.length) {
+          setRecordingDurationSeconds(0);
+          return;
+        }
+
+        const audioBlob = new Blob(recordedChunks, {
+          type: recordedMimeType,
+        });
+        const fileExtension = getVoiceRecordingExtension(recordedMimeType);
+        const recordingLabel = `voice-note-${Date.now()}.${fileExtension}`;
+        const audioFile = new File([audioBlob], recordingLabel, {
+          type: recordedMimeType,
+        });
+
+        replacePendingAttachment({
+          file: audioFile,
+          kind: "audio",
+          previewUrl: window.URL.createObjectURL(audioBlob),
+          name: audioFile.name,
+          sizeBytes: audioFile.size,
+          mimeType: audioFile.type,
+        });
+      };
+      mediaRecorder.start();
+      setRecordingDurationSeconds(0);
+      setIsRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingDurationSeconds((currentDuration) => currentDuration + 1);
+      }, 1000);
+    } catch (requestError) {
+      stopRecordingTimer();
+      stopRecordingStream();
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+      setRecordingDurationSeconds(0);
+      addToast({
+        type: "error",
+        message:
+          requestError?.name === "NotAllowedError"
+            ? t("chat.voicePermissionDenied")
+            : t("chat.voiceCaptureFailed"),
+      });
+    }
+  };
+
   const handleDraftChange = (event) => {
     const nextValue = event.target.value;
 
@@ -571,8 +830,9 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     }
 
     const nextBody = draft.trim();
+    const attachmentToSend = pendingAttachment;
 
-    if (!nextBody) {
+    if (!nextBody && !attachmentToSend) {
       return;
     }
 
@@ -587,7 +847,43 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     }
 
     try {
-      if (socket?.connected) {
+      if (attachmentToSend) {
+        const formData = new FormData();
+
+        if (nextBody) {
+          formData.append("body", nextBody);
+        }
+
+        formData.append("attachment", attachmentToSend.file);
+
+        const response = await sendConversationAttachmentMessage(
+          selectedConversationId,
+          formData
+        );
+        const nextConversation = response.data?.conversation;
+        const nextMessage = response.data?.chatMessage;
+
+        if (!socket?.connected) {
+          if (nextConversation) {
+            setConversations((currentConversations) =>
+              upsertConversation(currentConversations, nextConversation)
+            );
+          }
+
+          if (nextMessage) {
+            setMessagesByConversation((currentMessagesByConversation) => ({
+              ...currentMessagesByConversation,
+              [selectedConversationId]: upsertMessageList(
+                currentMessagesByConversation[selectedConversationId] || [],
+                nextMessage,
+                "append"
+              ),
+            }));
+          }
+        }
+
+        replacePendingAttachment(null);
+      } else if (socket?.connected) {
         await sendViaSocket(selectedConversationId, nextBody);
       } else {
         const response = await sendConversationMessage(selectedConversationId, {
@@ -625,6 +921,10 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   };
 
   useEffect(() => {
+    pendingAttachmentRef.current = pendingAttachment;
+  }, [pendingAttachment]);
+
+  useEffect(() => {
     return () => {
       if (localTypingTimeoutRef.current) {
         window.clearTimeout(localTypingTimeoutRef.current);
@@ -633,6 +933,19 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       Object.values(remoteTypingTimeoutsRef.current).forEach((timeoutId) => {
         window.clearTimeout(timeoutId);
       });
+
+      stopRecordingTimer();
+
+      if (mediaRecorderRef.current?.state && mediaRecorderRef.current.state !== "inactive") {
+        discardRecordingRef.current = true;
+        mediaRecorderRef.current.stop();
+      }
+
+      stopRecordingStream();
+
+      if (pendingAttachmentRef.current?.previewUrl) {
+        window.URL.revokeObjectURL(pendingAttachmentRef.current.previewUrl);
+      }
     };
   }, []);
 
@@ -695,6 +1008,104 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     if (messagesListElement.scrollTop <= 72) {
       handleLoadOlder().catch(() => {});
     }
+  };
+
+  const renderAttachment = (message) => {
+    const attachment = message.attachment;
+
+    if (!attachment?.urlPath) {
+      return null;
+    }
+
+    const attachmentUrl = buildConversationAttachmentUrl(attachment.urlPath);
+    const attachmentDownloadUrl = buildConversationAttachmentUrl(
+      attachment.downloadUrlPath || attachment.urlPath
+    );
+
+    if (message.type === "image") {
+      return (
+        <a
+          className="chat-attachment chat-attachment-image"
+          href={attachmentUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <img src={attachmentUrl} alt={attachment.originalName || t("chat.imageAttachment")} />
+        </a>
+      );
+    }
+
+    if (message.type === "audio") {
+      return (
+        <div className="chat-attachment chat-attachment-audio">
+          <audio controls preload="metadata" src={attachmentUrl}>
+            <a href={attachmentDownloadUrl}>{attachment.originalName || t("chat.voiceMessage")}</a>
+          </audio>
+        </div>
+      );
+    }
+
+    return (
+      <a
+        className="chat-attachment chat-attachment-file"
+        href={attachmentDownloadUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <FiFileText aria-hidden="true" />
+        <div>
+          <strong>{attachment.originalName || t("chat.fileAttachment")}</strong>
+          <span>
+            {formatAttachmentSize(attachment.sizeBytes, formatNumber)}
+          </span>
+        </div>
+        <FiDownload aria-hidden="true" />
+      </a>
+    );
+  };
+
+  const renderPendingAttachment = () => {
+    if (!pendingAttachment) {
+      return null;
+    }
+
+    return (
+      <div className="chat-pending-attachment">
+        <div className="chat-pending-attachment-main">
+          {pendingAttachment.kind === "image" && pendingAttachment.previewUrl ? (
+            <img
+              className="chat-pending-image"
+              src={pendingAttachment.previewUrl}
+              alt={pendingAttachment.name || t("chat.imageAttachment")}
+            />
+          ) : pendingAttachment.kind === "audio" && pendingAttachment.previewUrl ? (
+            <div className="chat-pending-audio">
+              <audio controls preload="metadata" src={pendingAttachment.previewUrl} />
+            </div>
+          ) : (
+            <span className="chat-pending-file-icon" aria-hidden="true">
+              <FiFileText />
+            </span>
+          )}
+
+          <div className="chat-pending-copy">
+            <strong>{pendingAttachment.name || t("chat.fileAttachment")}</strong>
+            <span>
+              {formatAttachmentSize(pendingAttachment.sizeBytes, formatNumber)}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="ghost-button chat-clear-attachment"
+          onClick={handleRemoveAttachment}
+          aria-label={t("chat.removeAttachment")}
+        >
+          <FiX aria-hidden="true" />
+        </button>
+      </div>
+    );
   };
 
   const typingParticipant = typingState[selectedConversationId];
@@ -856,7 +1267,8 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                                 : "chat-message-bubble"
                             }
                           >
-                            <p>{message.body}</p>
+                            {renderAttachment(message)}
+                            {message.body ? <p>{message.body}</p> : null}
                             <footer>
                               <span>{formatDateTime(message.createdAt)}</span>
                             </footer>
@@ -882,6 +1294,68 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
 
                   <form className="chat-compose-form" onSubmit={handleSendMessage}>
                     <div className="chat-compose-input">
+                      <div className="chat-compose-toolbar">
+                        <div className="chat-compose-actions">
+                          <button
+                            type="button"
+                            className="ghost-button chat-compose-action"
+                            disabled={sending || isRecording}
+                            onClick={() => imageInputRef.current?.click()}
+                          >
+                            <FiImage aria-hidden="true" />
+                            <span>{t("chat.attachImage")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button chat-compose-action"
+                            disabled={sending || isRecording}
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <FiPaperclip aria-hidden="true" />
+                            <span>{t("chat.attachFile")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              isRecording
+                                ? "ghost-button chat-compose-action is-recording"
+                                : "ghost-button chat-compose-action"
+                            }
+                            disabled={sending}
+                            onClick={() =>
+                              isRecording
+                                ? stopVoiceRecording()
+                                : startVoiceRecording().catch(() => {})
+                            }
+                          >
+                            {isRecording ? (
+                              <FiSquare aria-hidden="true" />
+                            ) : (
+                              <FiMic aria-hidden="true" />
+                            )}
+                            <span>
+                              {isRecording
+                                ? `${t("chat.stopRecording")} ${formatRecordingDuration(
+                                    recordingDurationSeconds
+                                  )}`
+                                : t("chat.recordVoice")}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="chat-compose-status">
+                          {isRecording ? (
+                            <span className="chat-recording-badge">
+                              {t("chat.recordingInProgress", {
+                                duration: formatRecordingDuration(recordingDurationSeconds),
+                              })}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {renderPendingAttachment()}
+
                       <textarea
                         ref={messageInputRef}
                         value={draft}
@@ -899,11 +1373,25 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                     <button
                       className="primary-button chat-send-button"
                       type="submit"
-                      disabled={!draft.trim() || sending}
+                      disabled={(!draft.trim() && !pendingAttachment) || sending}
                     >
                       <FiSend aria-hidden="true" />
                       <span>{sending ? t("chat.sending") : t("chat.send")}</span>
                     </button>
+                    <input
+                      ref={imageInputRef}
+                      className="chat-hidden-input"
+                      type="file"
+                      accept={IMAGE_FILE_ACCEPT}
+                      onChange={(event) => handleAttachmentSelection(event, "image")}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      className="chat-hidden-input"
+                      type="file"
+                      accept={DOCUMENT_FILE_ACCEPT}
+                      onChange={(event) => handleAttachmentSelection(event, "file")}
+                    />
                   </form>
                 </div>
               </>

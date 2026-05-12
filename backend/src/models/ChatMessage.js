@@ -40,14 +40,41 @@ const chatMessageSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["text"],
+      enum: ["text", "image", "audio", "file"],
       default: "text",
     },
     body: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
       maxlength: 2000,
+    },
+    attachment: {
+      storedName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      originalName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      mimeType: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      sizeBytes: {
+        type: Number,
+        min: 0,
+        default: 0,
+      },
+      extension: {
+        type: String,
+        trim: true,
+        default: "",
+      },
     },
     readAt: {
       type: Date,

@@ -1,6 +1,9 @@
+const fs = require("fs");
+const path = require("path");
 const ChatConversation = require("../models/ChatConversation");
 const ChatMessage = require("../models/ChatMessage");
 const DoctorPatient = require("../models/DoctorPatient");
+const { chatAttachmentsDir } = require("../middlewares/upload");
 const ApiError = require("../utils/ApiError");
 const { getPresence } = require("./presenceService");
 
@@ -14,6 +17,48 @@ const buildConversationPreview = (body = "") => {
   }
 
   return `${normalized.slice(0, 137)}...`;
+};
+
+const buildAttachmentMessageType = (mimeType = "") => {
+  if (String(mimeType).startsWith("image/")) {
+    return "image";
+  }
+
+  if (String(mimeType).startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+};
+
+const buildAttachmentPreviewText = (type, attachment = null) => {
+  if (type === "image") {
+    return attachment?.originalName
+      ? `Image: ${attachment.originalName}`
+      : "Sent an image";
+  }
+
+  if (type === "audio") {
+    return attachment?.originalName
+      ? `Voice note: ${attachment.originalName}`
+      : "Sent a voice note";
+  }
+
+  return attachment?.originalName ? `File: ${attachment.originalName}` : "Sent a file";
+};
+
+const buildMessagePreview = ({ body = "", type = "text", attachment = null }) => {
+  const textPreview = buildConversationPreview(body);
+
+  if (textPreview) {
+    return textPreview;
+  }
+
+  if (type === "text") {
+    return "";
+  }
+
+  return buildConversationPreview(buildAttachmentPreviewText(type, attachment));
 };
 
 const getCounterpartRole = (role) => (role === "doctor" ? "patient" : "doctor");
@@ -61,6 +106,27 @@ const serializeConversation = (conversation, currentUserRole, participant) => {
   };
 };
 
+const serializeAttachment = (message) => {
+  const attachment = message.attachment;
+
+  if (!attachment?.storedName) {
+    return null;
+  }
+
+  const conversationId = message.conversation.toString();
+  const messageId = message._id.toString();
+  const urlPath = `/chat/conversations/${conversationId}/messages/${messageId}/attachment`;
+
+  return {
+    originalName: attachment.originalName || "",
+    mimeType: attachment.mimeType || "application/octet-stream",
+    sizeBytes: attachment.sizeBytes || 0,
+    extension: attachment.extension || "",
+    urlPath,
+    downloadUrlPath: `${urlPath}?download=1`,
+  };
+};
+
 const serializeMessage = (message, currentUserId) => ({
   id: message._id.toString(),
   conversationId: message.conversation.toString(),
@@ -69,12 +135,21 @@ const serializeMessage = (message, currentUserId) => ({
   senderRole: message.senderRole,
   recipientId: message.recipient.toString(),
   recipientRole: message.recipientRole,
-  body: message.body,
+  body: message.body || "",
   type: message.type,
+  attachment: serializeAttachment(message),
   createdAt: message.createdAt,
   updatedAt: message.updatedAt,
   readAt: message.readAt,
   isOwnMessage: message.sender.toString() === String(currentUserId),
+});
+
+const createStoredAttachmentPayload = (file) => ({
+  storedName: file.filename,
+  originalName: file.originalname || file.filename,
+  mimeType: file.mimetype || "application/octet-stream",
+  sizeBytes: file.size || 0,
+  extension: path.extname(file.originalname || "").toLowerCase(),
 });
 
 const getConversationQueryForUser = (conversationId, user) =>
@@ -242,6 +317,73 @@ const ensureConversationIsActive = (conversation) => {
   }
 };
 
+const assertActiveAssignment = (relation) => {
+  if (relation.status !== ACTIVE_RELATION_STATUS) {
+    throw new ApiError(403, "Only active doctor-patient assignments can exchange messages");
+  }
+};
+
+const createConversationMessage = async (
+  conversation,
+  relation,
+  user,
+  { body = "", type = "text", attachment = null } = {}
+) => {
+  ensureConversationIsActive(conversation);
+  assertActiveAssignment(relation);
+
+  if (type === "text" && !body) {
+    throw new ApiError(400, "Message is required");
+  }
+
+  if (type !== "text" && !attachment?.storedName) {
+    throw new ApiError(400, "Attachment is required");
+  }
+
+  const recipientRole = getCounterpartRole(user.role);
+  const recipientId =
+    recipientRole === "doctor"
+      ? conversation.doctor.toString()
+      : conversation.patient.toString();
+  const message = await ChatMessage.create({
+    conversation: conversation._id,
+    assignment: conversation.assignment,
+    sender: user._id,
+    senderRole: user.role,
+    recipient: recipientId,
+    recipientRole,
+    body,
+    type,
+    attachment,
+  });
+
+  await ChatConversation.findByIdAndUpdate(conversation._id, {
+    $set: {
+      status: "active",
+      archivedAt: null,
+      lastMessage: {
+        id: message._id,
+        sender: user._id,
+        senderRole: user.role,
+        bodyPreview: buildMessagePreview({ body, type, attachment }),
+        type,
+        sentAt: message.createdAt,
+      },
+      [`unreadCounts.${user.role}`]: 0,
+      [`lastReadAt.${user.role}`]: message.createdAt,
+    },
+    $inc: {
+      [`unreadCounts.${recipientRole}`]: 1,
+    },
+  });
+
+  return {
+    message,
+    recipientId,
+    recipientRole,
+  };
+};
+
 const listConversationMessages = async (conversationId, user, query = {}) => {
   const { conversation, relation, summary } = await getConversationForUser(
     conversationId,
@@ -250,9 +392,7 @@ const listConversationMessages = async (conversationId, user, query = {}) => {
 
   ensureConversationIsActive(conversation);
 
-  if (relation.status !== ACTIVE_RELATION_STATUS) {
-    throw new ApiError(403, "Conversation is not available for this assignment");
-  }
+  assertActiveAssignment(relation);
 
   const limit = query.limit || 30;
   const filter = {
@@ -288,47 +428,15 @@ const sendMessage = async (conversationId, user, body) => {
     conversationId,
     user
   );
-
-  ensureConversationIsActive(conversation);
-
-  if (relation.status !== ACTIVE_RELATION_STATUS) {
-    throw new ApiError(403, "Only active doctor-patient assignments can exchange messages");
-  }
-
-  const recipientRole = getCounterpartRole(user.role);
-  const recipientId =
-    recipientRole === "doctor"
-      ? conversation.doctor.toString()
-      : conversation.patient.toString();
-  const message = await ChatMessage.create({
-    conversation: conversation._id,
-    assignment: conversation.assignment,
-    sender: user._id,
-    senderRole: user.role,
-    recipient: recipientId,
-    recipientRole,
-    body,
-  });
-
-  await ChatConversation.findByIdAndUpdate(conversation._id, {
-    $set: {
-      status: "active",
-      archivedAt: null,
-      lastMessage: {
-        id: message._id,
-        sender: user._id,
-        senderRole: user.role,
-        bodyPreview: buildConversationPreview(body),
-        type: "text",
-        sentAt: message.createdAt,
-      },
-      [`unreadCounts.${user.role}`]: 0,
-      [`lastReadAt.${user.role}`]: message.createdAt,
-    },
-    $inc: {
-      [`unreadCounts.${recipientRole}`]: 1,
-    },
-  });
+  const { message, recipientId, recipientRole } = await createConversationMessage(
+    conversation,
+    relation,
+    user,
+    {
+      body,
+      type: "text",
+    }
+  );
 
   const refreshedConversation = await getConversationForUser(conversation._id, user);
   const serializedMessage = serializeMessage(message.toObject(), user._id);
@@ -344,6 +452,70 @@ const sendMessage = async (conversationId, user, body) => {
   };
 };
 
+const sendAttachmentMessage = async (conversationId, user, { body = "", file } = {}) => {
+  if (!file) {
+    throw new ApiError(400, "Attachment is required");
+  }
+
+  const { conversation, relation, summary } = await getConversationForUser(
+    conversationId,
+    user
+  );
+  const attachment = createStoredAttachmentPayload(file);
+  const type = buildAttachmentMessageType(file.mimetype);
+  const { message, recipientId, recipientRole } = await createConversationMessage(
+    conversation,
+    relation,
+    user,
+    {
+      body,
+      type,
+      attachment,
+    }
+  );
+
+  const refreshedConversation = await getConversationForUser(conversation._id, user);
+  const serializedMessage = serializeMessage(message.toObject(), user._id);
+  const recipientMessage = serializeMessage(message.toObject(), recipientId);
+
+  return {
+    conversation: refreshedConversation.summary,
+    message: serializedMessage,
+    recipientMessage,
+    recipientId,
+    recipientRole,
+    participant: summary.participant,
+  };
+};
+
+const getMessageAttachmentForUser = async (conversationId, messageId, user) => {
+  const { conversation, relation } = await getConversationForUser(conversationId, user);
+
+  ensureConversationIsActive(conversation);
+  assertActiveAssignment(relation);
+
+  const message = await ChatMessage.findOne({
+    _id: messageId,
+    conversation: conversation._id,
+  }).lean();
+
+  if (!message?.attachment?.storedName) {
+    throw new ApiError(404, "Attachment not found");
+  }
+
+  const filePath = path.join(chatAttachmentsDir, message.attachment.storedName);
+
+  if (!fs.existsSync(filePath)) {
+    throw new ApiError(404, "Attachment file is unavailable");
+  }
+
+  return {
+    filePath,
+    attachment: message.attachment,
+    message: serializeMessage(message, user._id),
+  };
+};
+
 const markConversationRead = async (conversationId, user) => {
   const { conversation, relation, summary } = await getConversationForUser(
     conversationId,
@@ -352,9 +524,7 @@ const markConversationRead = async (conversationId, user) => {
 
   ensureConversationIsActive(conversation);
 
-  if (relation.status !== ACTIVE_RELATION_STATUS) {
-    throw new ApiError(403, "Conversation is no longer active");
-  }
+  assertActiveAssignment(relation);
 
   const now = new Date();
 
@@ -391,6 +561,8 @@ module.exports = {
   getConversationForUser,
   listConversationMessages,
   sendMessage,
+  sendAttachmentMessage,
+  getMessageAttachmentForUser,
   markConversationRead,
   syncConversationForAssignment,
 };

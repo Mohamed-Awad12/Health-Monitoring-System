@@ -43,7 +43,7 @@ const resolveApiBaseUrl = () => {
   return buildApiUrlFromCurrentHost();
 };
 
-const apiBaseUrl = resolveApiBaseUrl();
+export const apiBaseUrl = resolveApiBaseUrl();
 const csrfCookieName = import.meta.env.VITE_CSRF_COOKIE_NAME?.trim() || "pulse_csrf";
 const csrfHeaderName = import.meta.env.VITE_CSRF_HEADER_NAME?.trim() || "x-csrf-token";
 const mutatingMethods = new Set(["post", "put", "patch", "delete"]);

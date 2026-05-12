@@ -4,8 +4,10 @@ const { setNoStoreHeaders } = require("../utils/httpCache");
 const {
   listConversationsForUser,
   getConversationForUser,
+  getMessageAttachmentForUser,
   listConversationMessages,
   sendMessage,
+  sendAttachmentMessage,
   markConversationRead,
 } = require("../services/chatService");
 
@@ -20,6 +22,30 @@ const emitConversationUpdate = async (conversationId, user) => {
 
   io.to(`user:${user._id}`).emit("chat:conversation:updated", {
     conversation: summary,
+  });
+};
+
+const emitNewMessage = async (conversationId, senderId, payload) => {
+  const io = getIO();
+
+  if (!io) {
+    return;
+  }
+
+  const recipientSummary = (
+    await getConversationForUser(conversationId, {
+      _id: payload.recipientId,
+      role: payload.recipientRole,
+    })
+  ).summary;
+
+  io.to(`user:${senderId}`).emit("chat:message:new", {
+    conversation: payload.conversation,
+    message: payload.message,
+  });
+  io.to(`user:${payload.recipientId}`).emit("chat:message:new", {
+    conversation: recipientSummary,
+    message: payload.recipientMessage,
   });
 };
 
@@ -43,25 +69,7 @@ const listMessages = catchAsync(async (req, res) => {
 
 const createMessage = catchAsync(async (req, res) => {
   const payload = await sendMessage(req.params.conversationId, req.user, req.body.body);
-  const io = getIO();
-
-  if (io) {
-    const recipientSummary = (
-      await getConversationForUser(req.params.conversationId, {
-        _id: payload.recipientId,
-        role: payload.recipientRole,
-      })
-    ).summary;
-
-    io.to(`user:${req.user._id}`).emit("chat:message:new", {
-      conversation: payload.conversation,
-      message: payload.message,
-    });
-    io.to(`user:${payload.recipientId}`).emit("chat:message:new", {
-      conversation: recipientSummary,
-      message: payload.recipientMessage,
-    });
-  }
+  await emitNewMessage(req.params.conversationId, req.user._id, payload);
 
   setNoStoreHeaders(res);
   res.status(201).json({
@@ -69,6 +77,46 @@ const createMessage = catchAsync(async (req, res) => {
     conversation: payload.conversation,
     chatMessage: payload.message,
   });
+});
+
+const createAttachmentMessage = catchAsync(async (req, res) => {
+  const payload = await sendAttachmentMessage(req.params.conversationId, req.user, {
+    body: req.body.body || "",
+    file: req.file,
+  });
+  await emitNewMessage(req.params.conversationId, req.user._id, payload);
+
+  setNoStoreHeaders(res);
+  res.status(201).json({
+    message: "Chat attachment sent",
+    conversation: payload.conversation,
+    chatMessage: payload.message,
+  });
+});
+
+const streamAttachment = catchAsync(async (req, res) => {
+  const payload = await getMessageAttachmentForUser(
+    req.params.conversationId,
+    req.params.messageId,
+    req.user
+  );
+  const shouldDownload = Boolean(req.query.download);
+  const safeFileName = encodeURIComponent(payload.attachment.originalName || "attachment");
+  const dispositionType =
+    shouldDownload || payload.message.type === "file" ? "attachment" : "inline";
+
+  setNoStoreHeaders(res);
+  res.setHeader(
+    "Content-Disposition",
+    `${dispositionType}; filename*=UTF-8''${safeFileName}`
+  );
+  res.type(payload.attachment.mimeType || "application/octet-stream");
+
+  if (payload.attachment.sizeBytes) {
+    res.setHeader("Content-Length", String(payload.attachment.sizeBytes));
+  }
+
+  res.sendFile(payload.filePath);
 });
 
 const markRead = catchAsync(async (req, res) => {
@@ -94,5 +142,7 @@ module.exports = {
   listConversations,
   listMessages,
   createMessage,
+  createAttachmentMessage,
+  streamAttachment,
   markRead,
 };

@@ -127,7 +127,7 @@ const chatConversationSchema = {
         senderId: { type: "string" },
         senderRole: { type: "string", enum: ["patient", "doctor"] },
         sentAt: { type: "string", format: "date-time" },
-        type: { type: "string", enum: ["text"] },
+        type: { type: "string", enum: ["text", "image", "audio", "file"] },
       },
     },
   },
@@ -144,7 +144,18 @@ const chatMessageSchema = {
     recipientId: { type: "string" },
     recipientRole: { type: "string", enum: ["patient", "doctor"] },
     body: { type: "string" },
-    type: { type: "string", enum: ["text"] },
+    type: { type: "string", enum: ["text", "image", "audio", "file"] },
+    attachment: {
+      type: ["object", "null"],
+      properties: {
+        originalName: { type: "string" },
+        mimeType: { type: "string" },
+        sizeBytes: { type: "integer" },
+        extension: { type: "string" },
+        urlPath: { type: "string" },
+        downloadUrlPath: { type: "string" },
+      },
+    },
     createdAt: { type: "string", format: "date-time" },
     updatedAt: { type: "string", format: "date-time" },
     readAt: { type: "string", format: "date-time", nullable: true },
@@ -573,6 +584,62 @@ const openApiSpec = {
               chatMessage: chatMessageSchema,
             },
           }),
+        },
+      },
+    },
+    "/chat/conversations/{conversationId}/messages/attachment": {
+      post: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        parameters: [idParam("conversationId")],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["attachment"],
+                properties: {
+                  body: { type: "string", maxLength: 2000 },
+                  attachment: { type: "string", format: "binary" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: jsonResponse("Chat attachment sent", {
+            type: "object",
+            properties: {
+              message: { type: "string" },
+              conversation: chatConversationSchema,
+              chatMessage: chatMessageSchema,
+            },
+          }),
+        },
+      },
+    },
+    "/chat/conversations/{conversationId}/messages/{messageId}/attachment": {
+      get: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        parameters: [
+          idParam("conversationId"),
+          idParam("messageId"),
+          { name: "download", in: "query", schema: { type: "boolean" } },
+        ],
+        responses: {
+          200: {
+            description: "Chat attachment content",
+            content: {
+              "application/octet-stream": {
+                schema: {
+                  type: "string",
+                  format: "binary",
+                },
+              },
+            },
+          },
         },
       },
     },

@@ -75,6 +75,10 @@ export function NotificationsProvider({ children }) {
       const nextConversation = payload.conversation;
       const participantName =
         nextConversation?.participant?.name || t("common.doctor");
+      const notificationBody =
+        nextMessage?.body ||
+        nextMessage?.attachment?.originalName ||
+        t("notifications.chatMessageFallback");
 
       if (!nextMessage?.id || nextMessage.isOwnMessage) {
         return;
@@ -85,17 +89,14 @@ export function NotificationsProvider({ children }) {
         type: "chat",
         message: t("notifications.chatMessage", {
           name: participantName,
-          message: nextMessage.body,
+          message: notificationBody,
         }),
         conversationId: nextConversation?.id,
         createdAt: nextMessage.createdAt || new Date().toISOString(),
         read: false,
       });
 
-      showBrowserNotification(
-        participantName,
-        nextMessage.body || t("notifications.chatMessageFallback")
-      );
+      showBrowserNotification(participantName, notificationBody);
     };
 
     socket.on("alert:new", handleAlert);

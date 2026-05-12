@@ -4102,6 +4102,91 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   margin: 0;
 }
 
+.chat-attachment {
+  display: block;
+  text-decoration: none;
+}
+
+.chat-attachment + p {
+  margin-top: 0.78rem;
+}
+
+.chat-attachment-image {
+  overflow: hidden;
+  border-radius: 0.95rem;
+}
+
+.chat-attachment-image img {
+  display: block;
+  width: 100%;
+  max-width: min(22rem, 100%);
+  max-height: 18rem;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.chat-attachment-audio {
+  min-width: min(20rem, 100%);
+}
+
+.chat-attachment-audio audio,
+.chat-pending-audio audio {
+  width: 100%;
+}
+
+.chat-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.82rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 26%, var(--line));
+  border-radius: 0.95rem;
+  color: inherit;
+  background: color-mix(in srgb, var(--surface-muted) 92%, transparent);
+}
+
+.chat-attachment-file strong,
+.chat-pending-copy strong {
+  display: block;
+  color: inherit;
+}
+
+.chat-attachment-file span,
+.chat-pending-copy span {
+  display: block;
+  margin-top: 0.16rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.chat-attachment-file > svg,
+.chat-pending-file-icon {
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.85rem;
+  color: color-mix(in srgb, var(--primary) 82%, var(--text));
+  background: color-mix(in srgb, var(--primary-soft) 78%, transparent);
+}
+
+.chat-attachment-file > div,
+.chat-pending-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-message-bubble.own .chat-attachment-file {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.chat-message-bubble.own .chat-attachment-file span {
+  color: color-mix(in srgb, var(--chat-outgoing-text) 72%, transparent);
+}
+
 .chat-message-bubble p {
   white-space: pre-wrap;
   word-break: break-word;
@@ -4142,6 +4227,52 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   align-items: stretch;
 }
 
+.chat-compose-toolbar,
+.chat-compose-actions,
+.chat-pending-attachment,
+.chat-pending-attachment-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.chat-compose-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.chat-compose-actions {
+  flex-wrap: wrap;
+}
+
+.chat-compose-action {
+  min-height: 2.25rem;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+.chat-compose-action.is-recording {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 42%, transparent);
+  background: var(--critical-soft);
+}
+
+.chat-compose-status {
+  min-height: 1.55rem;
+}
+
+.chat-recording-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.55rem;
+  padding: 0.08rem 0.56rem;
+  border-radius: 999px;
+  color: var(--critical);
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--critical-soft);
+}
+
 .chat-compose-input {
   flex: 1;
   display: grid;
@@ -4162,6 +4293,39 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
     border-color var(--motion-fast) var(--ease-soft),
     box-shadow var(--motion-fast) var(--ease-soft),
     transform var(--motion-fast) var(--ease-soft);
+}
+
+.chat-pending-attachment {
+  justify-content: space-between;
+  padding: 0.68rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 28%, var(--line));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--surface-muted) 90%, transparent);
+}
+
+.chat-pending-attachment-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-pending-image {
+  width: 3.3rem;
+  height: 3.3rem;
+  flex: 0 0 3.3rem;
+  border-radius: 0.9rem;
+  object-fit: cover;
+}
+
+.chat-pending-audio {
+  min-width: min(16rem, 100%);
+  flex: 1;
+}
+
+.chat-clear-attachment {
+  width: 2.2rem;
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
 }
 
 .chat-compose-input:focus-within {
@@ -4214,6 +4378,10 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   background: color-mix(in srgb, var(--surface-muted) 92%, transparent);
 }
 
+.chat-hidden-input {
+  display: none;
+}
+
 .chat-send-button {
   min-width: 9rem;
   padding-inline: 1.15rem;
@@ -4252,6 +4420,22 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   .chat-thread-security,
   .chat-send-button,
   .chat-compose-form textarea {
+    width: 100%;
+  }
+
+  .chat-compose-toolbar,
+  .chat-pending-attachment,
+  .chat-pending-attachment-main {
+    align-items: flex-start;
+  }
+
+  .chat-compose-action {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .chat-pending-audio {
+    min-width: 0;
     width: 100%;
   }
 
