@@ -59,7 +59,7 @@ const createMessage = catchAsync(async (req, res) => {
     });
     io.to(`user:${payload.recipientId}`).emit("chat:message:new", {
       conversation: recipientSummary,
-      message: payload.message,
+      message: payload.recipientMessage,
     });
   }
 

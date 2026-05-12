@@ -331,10 +331,13 @@ const sendMessage = async (conversationId, user, body) => {
   });
 
   const refreshedConversation = await getConversationForUser(conversation._id, user);
+  const serializedMessage = serializeMessage(message.toObject(), user._id);
+  const recipientMessage = serializeMessage(message.toObject(), recipientId);
 
   return {
     conversation: refreshedConversation.summary,
-    message: serializeMessage(message.toObject(), user._id),
+    message: serializedMessage,
+    recipientMessage,
     recipientId,
     recipientRole,
     participant: summary.participant,

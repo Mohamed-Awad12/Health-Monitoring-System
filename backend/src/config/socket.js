@@ -196,7 +196,7 @@ const initializeSocket = (httpServer) => {
         });
         io.to(`user:${messagePayload.recipientId}`).emit("chat:message:new", {
           conversation: recipientSummary,
-          message: messagePayload.message,
+          message: messagePayload.recipientMessage,
         });
 
         ack({
