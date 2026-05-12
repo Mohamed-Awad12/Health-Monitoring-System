@@ -178,17 +178,29 @@ const drawPanel = (document, x, y, width, height, fill, stroke, radius = 14) => 
   document.roundedRect(x, y, width, height, radius).fillAndStroke(fill, stroke);
 };
 
+const measureLabelValuePairHeight = (document, label, value, width) => {
+  document.font("Helvetica-Bold").fontSize(9);
+  const labelHeight = document.heightOfString(label, { width });
+  document.font("Helvetica").fontSize(11);
+  const valueHeight = document.heightOfString(value, { width });
+
+  return labelHeight + 4 + valueHeight;
+};
+
 const drawLabelValuePair = (document, x, y, label, value, width) => {
   document
     .fillColor(COLORS.muted)
     .font("Helvetica-Bold")
     .fontSize(9)
     .text(label, x, y, { width });
+  const labelHeight = document.heightOfString(label, { width });
   document
     .fillColor(COLORS.ink)
     .font("Helvetica")
     .fontSize(11)
-    .text(value, x, y + 14, { width });
+    .text(value, x, y + labelHeight + 4, { width });
+
+  return measureLabelValuePairHeight(document, label, value, width);
 };
 
 const drawMetricCard = (document, x, y, width, metric) => {
@@ -220,8 +232,34 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
   const thirdWidth = (PAGE.width - cardGap * 2) / 3;
   const rangeLabel = getRangeLabel(period?.range);
   const periodLabel = formatPeriod(period, readings);
+  const thresholdLabel = `${DEFAULT_THRESHOLDS.lowSpo2}% SpO2, ${DEFAULT_THRESHOLDS.lowBpm}-${DEFAULT_THRESHOLDS.highBpm} BPM`;
   const highlights = buildHighlights({ summary, readings, period });
   const flaggedReadings = countFlaggedReadings(readings);
+  const metadataCardContentWidth = halfWidth - 32;
+  const patientCardHeight = 98;
+  const reportCardTopInset = 38;
+  const reportCardFieldGap = 10;
+  const reportPeriodHeight = measureLabelValuePairHeight(
+    document,
+    "Period",
+    periodLabel,
+    metadataCardContentWidth
+  );
+  const reportThresholdHeight = measureLabelValuePairHeight(
+    document,
+    "Thresholds",
+    thresholdLabel,
+    metadataCardContentWidth
+  );
+  const reportCardHeight = Math.max(
+    patientCardHeight,
+    reportCardTopInset +
+      reportPeriodHeight +
+      reportCardFieldGap +
+      reportThresholdHeight +
+      16
+  );
+  const metadataCardHeight = Math.max(patientCardHeight, reportCardHeight);
 
   let currentY = document.page.margins.top;
 
@@ -260,7 +298,16 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
 
   currentY += 122;
 
-  drawPanel(document, left, currentY, halfWidth, 98, COLORS.panel, COLORS.border, 14);
+  drawPanel(
+    document,
+    left,
+    currentY,
+    halfWidth,
+    metadataCardHeight,
+    COLORS.panel,
+    COLORS.border,
+    14
+  );
   document
     .fillColor(COLORS.heading)
     .font("Helvetica-Bold")
@@ -272,7 +319,7 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     currentY + 38,
     "Name",
     patient.name || "N/A",
-    halfWidth - 32
+    metadataCardContentWidth
   );
   drawLabelValuePair(
     document,
@@ -280,7 +327,7 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     currentY + 62,
     "Email",
     patient.email || "N/A",
-    halfWidth - 32
+    metadataCardContentWidth
   );
 
   drawPanel(
@@ -288,7 +335,7 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     left + halfWidth + cardGap,
     currentY,
     halfWidth,
-    98,
+    metadataCardHeight,
     COLORS.panel,
     COLORS.border,
     14
@@ -298,24 +345,26 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     .font("Helvetica-Bold")
     .fontSize(12)
     .text("Report Window", left + halfWidth + cardGap + 16, currentY + 16);
-  drawLabelValuePair(
+  const reportCardFieldX = left + halfWidth + cardGap + 16;
+  const periodFieldY = currentY + reportCardTopInset;
+  const periodFieldHeight = drawLabelValuePair(
     document,
-    left + halfWidth + cardGap + 16,
-    currentY + 38,
+    reportCardFieldX,
+    periodFieldY,
     "Period",
     periodLabel,
-    halfWidth - 32
+    metadataCardContentWidth
   );
   drawLabelValuePair(
     document,
-    left + halfWidth + cardGap + 16,
-    currentY + 62,
+    reportCardFieldX,
+    periodFieldY + periodFieldHeight + reportCardFieldGap,
     "Thresholds",
-    `${DEFAULT_THRESHOLDS.lowSpo2}% SpO2, ${DEFAULT_THRESHOLDS.lowBpm}-${DEFAULT_THRESHOLDS.highBpm} BPM`,
-    halfWidth - 32
+    thresholdLabel,
+    metadataCardContentWidth
   );
 
-  currentY += 118;
+  currentY += metadataCardHeight + 20;
 
   document
     .fillColor(COLORS.heading)
