@@ -96,6 +96,14 @@ const getConversationStatusLabel = (conversation, formatDateTime, t) =>
         })
       : t("chat.participantOffline");
 
+const isNearBottom = (element, threshold = 96) => {
+  if (!element) {
+    return true;
+  }
+
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+};
+
 export default function ChatPanel({ preferredParticipantId = "" }) {
   const { user } = useAuth();
   const { socket } = useSocket();
@@ -115,6 +123,9 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const remoteTypingTimeoutsRef = useRef({});
   const localTypingTimeoutRef = useRef(null);
   const messageInputRef = useRef(null);
+  const messagesListRef = useRef(null);
+  const pendingPrependRestoreRef = useRef(null);
+  const scrollToBottomOnNextRenderRef = useRef(false);
   const isTypingRef = useRef(false);
   const pendingReadRef = useRef(false);
 
@@ -257,6 +268,10 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     setError("");
 
     try {
+      if (mode !== "prepend") {
+        scrollToBottomOnNextRenderRef.current = true;
+      }
+
       const response = await getConversationMessages(conversationId, {
         limit: 30,
         before,
@@ -287,6 +302,10 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
         [conversationId]: pagination,
       }));
     } catch (requestError) {
+      if (mode === "prepend") {
+        pendingPrependRestoreRef.current = null;
+      }
+
       setError(requestError.response?.data?.message || t("chat.messagesLoadFailed"));
     } finally {
       setMessagesLoading(false);
@@ -331,6 +350,13 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
 
       if (!nextConversation?.id || !nextMessage?.id) {
         return;
+      }
+
+      if (
+        nextConversation.id === selectedConversationId &&
+        (nextMessage.senderId === user?._id || isNearBottom(messagesListRef.current))
+      ) {
+        scrollToBottomOnNextRenderRef.current = true;
       }
 
       setConversations((currentConversations) =>
@@ -472,14 +498,34 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   };
 
   const handleLoadOlder = async () => {
-    if (!selectedConversationId || !selectedPagination.hasMore || loadingOlder) {
+    if (
+      !selectedConversationId ||
+      !selectedPagination.hasMore ||
+      loadingOlder ||
+      pendingPrependRestoreRef.current
+    ) {
       return;
     }
 
-    await loadConversationMessages(selectedConversationId, {
-      before: selectedPagination.nextCursor,
-      mode: "prepend",
-    });
+    const messagesListElement = messagesListRef.current;
+
+    if (messagesListElement) {
+      pendingPrependRestoreRef.current = {
+        conversationId: selectedConversationId,
+        scrollHeight: messagesListElement.scrollHeight,
+        scrollTop: messagesListElement.scrollTop,
+      };
+    }
+
+    try {
+      await loadConversationMessages(selectedConversationId, {
+        before: selectedPagination.nextCursor,
+        mode: "prepend",
+      });
+    } catch (requestError) {
+      pendingPrependRestoreRef.current = null;
+      throw requestError;
+    }
   };
 
   const sendViaSocket = (conversationId, body) =>
@@ -532,6 +578,7 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
 
     setSending(true);
     setDraft("");
+    scrollToBottomOnNextRenderRef.current = true;
     stopTyping();
 
     if (localTypingTimeoutRef.current) {
@@ -601,10 +648,52 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     textarea.style.overflowY = textarea.scrollHeight > 220 ? "auto" : "hidden";
   }, [draft, selectedConversationId]);
 
+  useEffect(() => {
+    const messagesListElement = messagesListRef.current;
+
+    if (!messagesListElement) {
+      return;
+    }
+
+    const pendingPrependRestore = pendingPrependRestoreRef.current;
+
+    if (pendingPrependRestore?.conversationId === selectedConversationId) {
+      messagesListElement.scrollTop =
+        messagesListElement.scrollHeight -
+        pendingPrependRestore.scrollHeight +
+        pendingPrependRestore.scrollTop;
+      pendingPrependRestoreRef.current = null;
+      return;
+    }
+
+    if (scrollToBottomOnNextRenderRef.current) {
+      messagesListElement.scrollTop = messagesListElement.scrollHeight;
+      scrollToBottomOnNextRenderRef.current = false;
+    }
+  }, [selectedConversationId, selectedMessages.length]);
+
   const handleDraftKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSendMessage(event).catch(() => {});
+    }
+  };
+
+  const handleMessagesScroll = () => {
+    const messagesListElement = messagesListRef.current;
+
+    if (
+      !messagesListElement ||
+      messagesLoading ||
+      loadingOlder ||
+      !selectedPagination.hasMore ||
+      pendingPrependRestoreRef.current
+    ) {
+      return;
+    }
+
+    if (messagesListElement.scrollTop <= 72) {
+      handleLoadOlder().catch(() => {});
     }
   };
 
@@ -739,7 +828,13 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                     </button>
                   ) : null}
 
-                  <div className="chat-messages-list" role="log" aria-live="polite">
+                  <div
+                    ref={messagesListRef}
+                    className="chat-messages-list"
+                    role="log"
+                    aria-live="polite"
+                    onScroll={handleMessagesScroll}
+                  >
                     {messagesLoading && !selectedMessages.length ? (
                       <div className="chat-panel-loading">
                         <div className="loading-dot" />
