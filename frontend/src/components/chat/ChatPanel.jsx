@@ -618,14 +618,14 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     );
   }, [conversations, preferredParticipantId]);
 
-  const updateConversationReadState = (conversationId, readAt) => {
+  const updateConversationReadState = (conversationId, readAt, recipientId = user?._id) => {
     setMessagesByConversation((currentMessagesByConversation) => {
       const currentMessages = currentMessagesByConversation[conversationId] || [];
 
       return {
         ...currentMessagesByConversation,
         [conversationId]: currentMessages.map((message) =>
-          message.recipientId === user?._id && !message.readAt
+          message.recipientId === recipientId && !message.readAt
             ? { ...message, readAt }
             : message
         ),
@@ -821,6 +821,18 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       );
     };
 
+    const handleConversationRead = (payload = {}) => {
+      if (!payload.conversationId || !payload.readerId || !payload.readAt) {
+        return;
+      }
+
+      updateConversationReadState(
+        payload.conversationId,
+        payload.readAt,
+        payload.readerId
+      );
+    };
+
     const handlePresenceUpdate = (payload = {}) => {
       if (!payload.userId) {
         return;
@@ -873,12 +885,14 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
 
     socket.on("chat:message:new", handleMessage);
     socket.on("chat:conversation:updated", handleConversationUpdate);
+    socket.on("chat:conversation:read", handleConversationRead);
     socket.on("chat:presence:update", handlePresenceUpdate);
     socket.on("chat:typing:update", handleTypingUpdate);
 
     return () => {
       socket.off("chat:message:new", handleMessage);
       socket.off("chat:conversation:updated", handleConversationUpdate);
+      socket.off("chat:conversation:read", handleConversationRead);
       socket.off("chat:presence:update", handlePresenceUpdate);
       socket.off("chat:typing:update", handleTypingUpdate);
     };

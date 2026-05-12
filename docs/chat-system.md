@@ -215,6 +215,20 @@ Sent to both the sender and the recipient with a user-specific conversation summ
 
 Used to synchronize unread counters, archived status, and presence-aware conversation metadata.
 
+#### `chat:conversation:read`
+
+Sent to both chat participants when one side opens a conversation and unread messages are marked read.
+
+```json
+{
+  "conversationId": "665...",
+  "readerId": "665...",
+  "readerRole": "patient",
+  "participantId": "665...",
+  "readAt": "2026-05-12T10:27:00.000Z"
+}
+```
+
 #### `chat:presence:update`
 
 Payload:

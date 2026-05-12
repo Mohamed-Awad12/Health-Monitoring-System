@@ -49,6 +49,25 @@ const emitNewMessage = async (conversationId, senderId, payload) => {
   });
 };
 
+const emitConversationRead = (conversationId, reader, participant, readAt) => {
+  const io = getIO();
+
+  if (!io || !conversationId || !reader?._id || !participant?.id || !readAt) {
+    return;
+  }
+
+  const payload = {
+    conversationId,
+    readerId: reader._id.toString(),
+    readerRole: reader.role,
+    participantId: participant.id,
+    readAt: new Date(readAt).toISOString(),
+  };
+
+  io.to(`user:${reader._id}`).emit("chat:conversation:read", payload);
+  io.to(`user:${participant.id}`).emit("chat:conversation:read", payload);
+};
+
 const listConversations = catchAsync(async (req, res) => {
   const conversations = await listConversationsForUser(req.user);
 
@@ -129,6 +148,12 @@ const markRead = catchAsync(async (req, res) => {
       _id: payload.conversation.participant.id,
       role: payload.conversation.participant.role,
     });
+    emitConversationRead(
+      req.params.conversationId,
+      req.user,
+      payload.conversation.participant,
+      payload.readAt
+    );
   }
 
   setNoStoreHeaders(res);
