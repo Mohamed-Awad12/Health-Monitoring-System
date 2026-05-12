@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import api from "../../api/axios";
 import {
-  buildConversationAttachmentUrl,
   getChatConversations,
   getConversationMessages,
   markConversationRead,
@@ -193,6 +193,141 @@ const formatAttachmentSize = (sizeBytes, formatNumber) => {
     maximumFractionDigits: value >= 10 || unitIndex === 0 ? 0 : 1,
   })} ${units[unitIndex]}`;
 };
+
+const downloadBlobFile = (blob, fileName = "attachment") => {
+  const blobUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = blobUrl;
+  anchor.download = fileName;
+  anchor.click();
+
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(blobUrl);
+  }, 0);
+};
+
+function useSecureAttachmentBlob(attachmentPath) {
+  const [imageUrl, setImageUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let revokedUrl = "";
+    let cancelled = false;
+
+    const loadImage = async () => {
+      if (!attachmentPath) {
+        setImageUrl("");
+        setFailed(false);
+        return;
+      }
+
+      setFailed(false);
+
+      try {
+        const response = await api.get(attachmentPath, {
+          responseType: "blob",
+        });
+        const nextImageUrl = window.URL.createObjectURL(response.data);
+
+        if (cancelled) {
+          window.URL.revokeObjectURL(nextImageUrl);
+          return;
+        }
+
+        revokedUrl = nextImageUrl;
+        setImageUrl(nextImageUrl);
+      } catch {
+        if (!cancelled) {
+          setFailed(true);
+          setImageUrl("");
+        }
+      }
+    };
+
+    loadImage().catch(() => {});
+
+    return () => {
+      cancelled = true;
+
+      if (revokedUrl) {
+        window.URL.revokeObjectURL(revokedUrl);
+      }
+    };
+  }, [attachmentPath]);
+
+  return {
+    blobUrl: imageUrl,
+    failed,
+  };
+}
+
+function SecureChatImage({ attachmentPath, alt, fallbackText, onDownload }) {
+  const { blobUrl: imageUrl, failed } = useSecureAttachmentBlob(attachmentPath);
+
+  if (failed) {
+    return (
+      <button
+        type="button"
+        className="chat-attachment chat-attachment-file chat-attachment-file-button"
+        onClick={onDownload}
+      >
+        <FiFileText aria-hidden="true" />
+        <div>
+          <strong>{alt}</strong>
+          <span>{fallbackText}</span>
+        </div>
+        <FiDownload aria-hidden="true" />
+      </button>
+    );
+  }
+
+  if (!imageUrl) {
+    return <div className="chat-attachment chat-attachment-image chat-attachment-image-loading" />;
+  }
+
+  return (
+    <a
+      className="chat-attachment chat-attachment-image"
+      href={imageUrl}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <img src={imageUrl} alt={alt} />
+    </a>
+  );
+}
+
+function SecureChatAudio({ attachmentPath, title, fallbackText, onDownload }) {
+  const { blobUrl: audioUrl, failed } = useSecureAttachmentBlob(attachmentPath);
+
+  if (failed) {
+    return (
+      <button
+        type="button"
+        className="chat-attachment chat-attachment-file chat-attachment-file-button"
+        onClick={onDownload}
+      >
+        <FiFileText aria-hidden="true" />
+        <div>
+          <strong>{title}</strong>
+          <span>{fallbackText}</span>
+        </div>
+        <FiDownload aria-hidden="true" />
+      </button>
+    );
+  }
+
+  if (!audioUrl) {
+    return <div className="chat-attachment chat-attachment-audio chat-attachment-audio-loading" />;
+  }
+
+  return (
+    <div className="chat-attachment chat-attachment-audio">
+      <audio controls preload="metadata" src={audioUrl} />
+    </div>
+  );
+}
 
 export default function ChatPanel({ preferredParticipantId = "" }) {
   const { user } = useAuth();
@@ -1010,6 +1145,28 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     }
   };
 
+  const handleDownloadAttachment = async (attachment) => {
+    if (!attachment?.urlPath) {
+      return;
+    }
+
+    try {
+      const response = await api.get(attachment.downloadUrlPath || attachment.urlPath, {
+        responseType: "blob",
+      });
+
+      downloadBlobFile(
+        response.data,
+        attachment.originalName || attachment.extension || "attachment"
+      );
+    } catch {
+      addToast({
+        type: "error",
+        message: t("chat.downloadFailed"),
+      });
+    }
+  };
+
   const renderAttachment = (message) => {
     const attachment = message.attachment;
 
@@ -1017,40 +1174,33 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       return null;
     }
 
-    const attachmentUrl = buildConversationAttachmentUrl(attachment.urlPath);
-    const attachmentDownloadUrl = buildConversationAttachmentUrl(
-      attachment.downloadUrlPath || attachment.urlPath
-    );
-
     if (message.type === "image") {
       return (
-        <a
-          className="chat-attachment chat-attachment-image"
-          href={attachmentUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <img src={attachmentUrl} alt={attachment.originalName || t("chat.imageAttachment")} />
-        </a>
+        <SecureChatImage
+          attachmentPath={attachment.urlPath}
+          alt={attachment.originalName || t("chat.imageAttachment")}
+          fallbackText={t("chat.openImage")}
+          onDownload={() => handleDownloadAttachment(attachment)}
+        />
       );
     }
 
     if (message.type === "audio") {
       return (
-        <div className="chat-attachment chat-attachment-audio">
-          <audio controls preload="metadata" src={attachmentUrl}>
-            <a href={attachmentDownloadUrl}>{attachment.originalName || t("chat.voiceMessage")}</a>
-          </audio>
-        </div>
+        <SecureChatAudio
+          attachmentPath={attachment.urlPath}
+          title={attachment.originalName || t("chat.voiceMessage")}
+          fallbackText={t("chat.downloadAudio")}
+          onDownload={() => handleDownloadAttachment(attachment)}
+        />
       );
     }
 
     return (
-      <a
-        className="chat-attachment chat-attachment-file"
-        href={attachmentDownloadUrl}
-        target="_blank"
-        rel="noreferrer"
+      <button
+        type="button"
+        className="chat-attachment chat-attachment-file chat-attachment-file-button"
+        onClick={() => handleDownloadAttachment(attachment)}
       >
         <FiFileText aria-hidden="true" />
         <div>
@@ -1060,7 +1210,7 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
           </span>
         </div>
         <FiDownload aria-hidden="true" />
-      </a>
+      </button>
     );
   };
 

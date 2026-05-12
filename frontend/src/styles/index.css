@@ -4116,6 +4116,17 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   border-radius: 0.95rem;
 }
 
+.chat-attachment-image-loading {
+  width: min(22rem, 100%);
+  min-height: 11rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--surface-muted) 88%, transparent),
+      color-mix(in srgb, var(--surface-strong) 92%, transparent)
+    );
+}
+
 .chat-attachment-image img {
   display: block;
   width: 100%;
@@ -4127,6 +4138,18 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
 
 .chat-attachment-audio {
   min-width: min(20rem, 100%);
+}
+
+.chat-attachment-audio-loading {
+  min-width: min(20rem, 100%);
+  min-height: 3.5rem;
+  border-radius: 0.95rem;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--surface-muted) 88%, transparent),
+      color-mix(in srgb, var(--surface-strong) 92%, transparent)
+    );
 }
 
 .chat-attachment-audio audio,
@@ -4143,6 +4166,13 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
   border-radius: 0.95rem;
   color: inherit;
   background: color-mix(in srgb, var(--surface-muted) 92%, transparent);
+}
+
+.chat-attachment-file-button {
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
 }
 
 .chat-attachment-file strong,
