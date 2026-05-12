@@ -1692,22 +1692,38 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                                         ? "chat-message-status is-read"
                                         : "chat-message-status"
                                     }
+                                    role="img"
+                                    aria-label={
+                                      item.message.readAt
+                                        ? t("chat.readAt", {
+                                            date: formatDateTime(item.message.readAt),
+                                          })
+                                        : t("chat.sentStatus")
+                                    }
+                                    title={
+                                      item.message.readAt
+                                        ? t("chat.readAt", {
+                                            date: formatDateTime(item.message.readAt),
+                                          })
+                                        : t("chat.sentStatus")
+                                    }
                                   >
-                                    {item.message.readAt ? (
-                                      <>
-                                        <FiCheck aria-hidden="true" />
-                                        <span>
-                                          {t("chat.readStatus")}{" "}
-                                          {formatMessageTime(
-                                            item.message.readAt,
-                                            localeTag,
-                                            t
-                                          )}
-                                        </span>
-                                      </>
-                                    ) : (
-                                      t("chat.sentStatus")
-                                    )}
+                                    <span
+                                      className={
+                                        item.message.readAt
+                                          ? "chat-message-status-icon double"
+                                          : "chat-message-status-icon single"
+                                      }
+                                      aria-hidden="true"
+                                    >
+                                      <FiCheck className="chat-message-check" aria-hidden="true" />
+                                      {item.message.readAt ? (
+                                        <FiCheck
+                                          className="chat-message-check"
+                                          aria-hidden="true"
+                                        />
+                                      ) : null}
+                                    </span>
                                   </span>
                                 ) : null}
                               </footer>

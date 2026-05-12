@@ -4417,12 +4417,41 @@ html[dir="rtl"] .landing-roll-status-item.is-active {
 .chat-message-status {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.18rem;
   font-weight: 700;
+  line-height: 1;
 }
 
 .chat-message-status.is-read {
   color: var(--accent);
+}
+
+.chat-message-status-icon {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1.2rem;
+  height: 0.9rem;
+}
+
+.chat-message-check {
+  position: absolute;
+  inset-block-start: 50%;
+  width: 0.82rem;
+  height: 0.82rem;
+  transform: translateY(-50%);
+}
+
+.chat-message-status-icon.single .chat-message-check {
+  inset-inline-start: 0.18rem;
+}
+
+.chat-message-status-icon.double .chat-message-check:first-child {
+  inset-inline-start: 0;
+}
+
+.chat-message-status-icon.double .chat-message-check:last-child {
+  inset-inline-start: 0.34rem;
 }
 
 .chat-message-bubble.own footer {
