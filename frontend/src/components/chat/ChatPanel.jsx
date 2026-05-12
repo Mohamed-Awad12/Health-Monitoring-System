@@ -13,6 +13,8 @@ import { useToast } from "../../hooks/useToast";
 import { useUiPreferences } from "../../hooks/useUiPreferences";
 import EmptyState from "../ui/EmptyState";
 import {
+  FiArrowDown,
+  FiCheck,
   FiClock,
   FiDownload,
   FiFileText,
@@ -20,6 +22,7 @@ import {
   FiMessageSquare,
   FiMic,
   FiPaperclip,
+  FiSearch,
   FiSend,
   FiSquare,
   FiX,
@@ -194,6 +197,107 @@ const formatAttachmentSize = (sizeBytes, formatNumber) => {
   })} ${units[unitIndex]}`;
 };
 
+const getParticipantInitials = (name = "") => {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return "?";
+  }
+
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+};
+
+const normalizeSearchValue = (value = "") => String(value || "").trim().toLocaleLowerCase();
+
+const isSameCalendarDay = (firstDate, secondDate) =>
+  firstDate.getFullYear() === secondDate.getFullYear() &&
+  firstDate.getMonth() === secondDate.getMonth() &&
+  firstDate.getDate() === secondDate.getDate();
+
+const formatConversationTimestamp = (value, localeTag, t) => {
+  if (!value) {
+    return t("common.never");
+  }
+
+  const targetDate = new Date(value);
+
+  if (Number.isNaN(targetDate.getTime())) {
+    return t("common.never");
+  }
+
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameCalendarDay(targetDate, now)) {
+    return new Intl.DateTimeFormat(localeTag, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(targetDate);
+  }
+
+  if (isSameCalendarDay(targetDate, yesterday)) {
+    return t("chat.yesterday");
+  }
+
+  return new Intl.DateTimeFormat(localeTag, {
+    month: "short",
+    day: "numeric",
+    ...(targetDate.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  }).format(targetDate);
+};
+
+const formatMessageTime = (value, localeTag, t) => {
+  if (!value) {
+    return t("common.never");
+  }
+
+  const targetDate = new Date(value);
+
+  if (Number.isNaN(targetDate.getTime())) {
+    return t("common.never");
+  }
+
+  return new Intl.DateTimeFormat(localeTag, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(targetDate);
+};
+
+const formatMessageDayLabel = (value, localeTag, t) => {
+  if (!value) {
+    return t("common.never");
+  }
+
+  const targetDate = new Date(value);
+
+  if (Number.isNaN(targetDate.getTime())) {
+    return t("common.never");
+  }
+
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (isSameCalendarDay(targetDate, now)) {
+    return t("chat.today");
+  }
+
+  if (isSameCalendarDay(targetDate, yesterday)) {
+    return t("chat.yesterday");
+  }
+
+  return new Intl.DateTimeFormat(localeTag, {
+    dateStyle: "full",
+  }).format(targetDate);
+};
+
 const downloadBlobFile = (blob, fileName = "attachment") => {
   const blobUrl = window.URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -333,7 +437,7 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { addToast } = useToast();
-  const { formatDateTime, formatNumber, t } = useUiPreferences();
+  const { formatDateTime, formatNumber, localeTag, t } = useUiPreferences();
   const [conversations, setConversations] = useState([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messagesByConversation, setMessagesByConversation] = useState({});
@@ -343,7 +447,10 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
+  const [conversationQuery, setConversationQuery] = useState("");
   const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [pendingLatestCount, setPendingLatestCount] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
   const [error, setError] = useState("");
@@ -370,9 +477,53 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       conversations.find((conversation) => conversation.id === selectedConversationId) || null,
     [conversations, selectedConversationId]
   );
+  const filteredConversations = useMemo(() => {
+    const normalizedQuery = normalizeSearchValue(conversationQuery);
+
+    if (!normalizedQuery) {
+      return conversations;
+    }
+
+    return conversations.filter((conversation) =>
+      [
+        conversation.participant?.name,
+        conversation.participant?.email,
+        conversation.participant?.specialty,
+        conversation.lastMessage?.bodyPreview,
+      ].some((value) => normalizeSearchValue(value).includes(normalizedQuery))
+    );
+  }, [conversationQuery, conversations]);
   const selectedMessages = selectedConversationId
     ? messagesByConversation[selectedConversationId] || []
     : [];
+  const renderedMessageItems = useMemo(() => {
+    let lastDayKey = "";
+
+    return selectedMessages.flatMap((message) => {
+      const messageDate = new Date(message.createdAt);
+      const dayKey = Number.isNaN(messageDate.getTime())
+        ? message.id
+        : `${messageDate.getFullYear()}-${messageDate.getMonth()}-${messageDate.getDate()}`;
+      const items = [];
+
+      if (dayKey !== lastDayKey) {
+        items.push({
+          type: "separator",
+          key: `separator-${dayKey}`,
+          label: formatMessageDayLabel(message.createdAt, localeTag, t),
+        });
+        lastDayKey = dayKey;
+      }
+
+      items.push({
+        type: "message",
+        key: message.id,
+        message,
+      });
+
+      return items;
+    });
+  }, [localeTag, selectedMessages, t]);
   const selectedPagination =
     paginationByConversation[selectedConversationId] || {
       hasMore: false,
@@ -603,6 +754,11 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   }, [selectedConversationId, conversations]);
 
   useEffect(() => {
+    setShowJumpToLatest(false);
+    setPendingLatestCount(0);
+  }, [selectedConversationId]);
+
+  useEffect(() => {
     if (!socket) {
       return undefined;
     }
@@ -615,11 +771,21 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
         return;
       }
 
+      const nearBottom = isNearBottom(messagesListRef.current);
+
       if (
         nextConversation.id === selectedConversationId &&
-        (nextMessage.senderId === user?._id || isNearBottom(messagesListRef.current))
+        (nextMessage.senderId === user?._id || nearBottom)
       ) {
         scrollToBottomOnNextRenderRef.current = true;
+        setPendingLatestCount(0);
+        setShowJumpToLatest(false);
+      } else if (
+        nextConversation.id === selectedConversationId &&
+        nextMessage.senderId !== user?._id
+      ) {
+        setPendingLatestCount((currentCount) => currentCount + 1);
+        setShowJumpToLatest(true);
       }
 
       setConversations((currentConversations) =>
@@ -1117,6 +1283,8 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     if (scrollToBottomOnNextRenderRef.current) {
       messagesListElement.scrollTop = messagesListElement.scrollHeight;
       scrollToBottomOnNextRenderRef.current = false;
+      setShowJumpToLatest(false);
+      setPendingLatestCount(0);
     }
   }, [selectedConversationId, selectedMessages.length]);
 
@@ -1130,8 +1298,20 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const handleMessagesScroll = () => {
     const messagesListElement = messagesListRef.current;
 
+    if (!messagesListElement) {
+      return;
+    }
+
+    const nearBottom = isNearBottom(messagesListElement);
+    setShowJumpToLatest((currentValue) =>
+      currentValue === !nearBottom ? currentValue : !nearBottom
+    );
+
+    if (nearBottom) {
+      setPendingLatestCount(0);
+    }
+
     if (
-      !messagesListElement ||
       messagesLoading ||
       loadingOlder ||
       !selectedPagination.hasMore ||
@@ -1143,6 +1323,21 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     if (messagesListElement.scrollTop <= 72) {
       handleLoadOlder().catch(() => {});
     }
+  };
+
+  const handleJumpToLatest = () => {
+    const messagesListElement = messagesListRef.current;
+
+    if (!messagesListElement) {
+      return;
+    }
+
+    messagesListElement.scrollTo({
+      top: messagesListElement.scrollHeight,
+      behavior: "smooth",
+    });
+    setShowJumpToLatest(false);
+    setPendingLatestCount(0);
   };
 
   const handleDownloadAttachment = async (attachment) => {
@@ -1258,6 +1453,20 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     );
   };
 
+  const getConversationPreviewText = (conversation) => {
+    const preview = conversation.lastMessage?.bodyPreview || t("chat.noMessages");
+
+    if (!conversation.lastMessage?.bodyPreview) {
+      return preview;
+    }
+
+    return conversation.lastMessage.senderId === user?._id
+      ? t("chat.youMessagePreview", {
+          message: preview,
+        })
+      : preview;
+  };
+
   const typingParticipant = typingState[selectedConversationId];
   const selectedStatusText = selectedConversation
     ? selectedConversation.participant?.onlineStatus?.isOnline
@@ -1305,49 +1514,92 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
               </span>
             </div>
 
+            <div className="chat-sidebar-tools">
+              <label className="chat-search-field">
+                <span className="chat-search-icon" aria-hidden="true">
+                  <FiSearch />
+                </span>
+                <input
+                  type="search"
+                  value={conversationQuery}
+                  placeholder={t("chat.searchPlaceholder")}
+                  aria-label={t("chat.searchPlaceholder")}
+                  onChange={(event) => setConversationQuery(event.target.value)}
+                />
+                {conversationQuery ? (
+                  <button
+                    type="button"
+                    className="chat-search-clear"
+                    onClick={() => setConversationQuery("")}
+                  >
+                    {t("chat.clearSearch")}
+                  </button>
+                ) : null}
+              </label>
+            </div>
+
             <div className="chat-conversation-list">
-              {conversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  type="button"
-                  className={
-                    conversation.id === selectedConversationId
-                      ? "chat-conversation-item active"
-                      : "chat-conversation-item"
-                  }
-                  onClick={() => setSelectedConversationId(conversation.id)}
-                >
-                  <div className="chat-conversation-top">
-                    <div>
-                      <strong>{conversation.participant?.name}</strong>
-                      <span>{getParticipantLabel(conversation, t)}</span>
+              {filteredConversations.length ? (
+                filteredConversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    className={
+                      conversation.id === selectedConversationId
+                        ? "chat-conversation-item active"
+                        : "chat-conversation-item"
+                    }
+                    onClick={() => setSelectedConversationId(conversation.id)}
+                  >
+                    <div className="chat-conversation-top">
+                      <div className="chat-conversation-identity">
+                        <span className="chat-avatar" aria-hidden="true">
+                          {getParticipantInitials(conversation.participant?.name)}
+                        </span>
+                        <div className="chat-conversation-copy">
+                          <strong>{conversation.participant?.name}</strong>
+                          <span>{getParticipantLabel(conversation, t)}</span>
+                        </div>
+                      </div>
+                      <div className="chat-conversation-indicators">
+                        <small className="chat-conversation-time">
+                          {formatConversationTimestamp(
+                            conversation.latestActivityAt,
+                            localeTag,
+                            t
+                          )}
+                        </small>
+                        <span
+                          className={
+                            conversation.participant?.onlineStatus?.isOnline
+                              ? "chat-status-dot online"
+                              : "chat-status-dot"
+                          }
+                          aria-hidden="true"
+                        />
+                      </div>
                     </div>
-                    <span
-                      className={
-                        conversation.participant?.onlineStatus?.isOnline
-                          ? "chat-status-dot online"
-                          : "chat-status-dot"
-                      }
-                      aria-hidden="true"
-                    />
-                  </div>
 
-                  <p className="chat-conversation-preview">
-                    {conversation.lastMessage?.bodyPreview || t("chat.noMessages")}
-                  </p>
+                    <p className="chat-conversation-preview">
+                      {getConversationPreviewText(conversation)}
+                    </p>
 
-                  <div className="chat-conversation-meta">
-                    <small>
-                      {getConversationStatusLabel(conversation, formatDateTime, t)}
-                    </small>
-                    {conversation.unreadCount ? (
-                      <span className="chat-unread-badge">{conversation.unreadCount}</span>
-                    ) : (
-                      <small>{formatDateTime(conversation.latestActivityAt)}</small>
-                    )}
-                  </div>
-                </button>
-              ))}
+                    <div className="chat-conversation-meta">
+                      <small>
+                        {getConversationStatusLabel(conversation, formatDateTime, t)}
+                      </small>
+                      {conversation.unreadCount ? (
+                        <span className="chat-unread-badge">{conversation.unreadCount}</span>
+                      ) : null}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="chat-sidebar-empty">
+                  <strong>{t("chat.noSearchResultsTitle")}</strong>
+                  <p>{t("chat.noSearchResultsDescription")}</p>
+                </div>
+              )}
             </div>
           </aside>
 
@@ -1355,20 +1607,25 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
             {selectedConversation ? (
               <>
                 <header className="chat-thread-header">
-                  <div>
-                    <div className="chat-thread-title-row">
-                      <h3>{selectedConversation.participant?.name}</h3>
-                      <span
-                        className={
-                          selectedConversation.participant?.onlineStatus?.isOnline
-                            ? "chat-status-dot online"
-                            : "chat-status-dot"
-                        }
-                        aria-hidden="true"
-                      />
+                  <div className="chat-thread-participant">
+                    <span className="chat-avatar chat-thread-avatar" aria-hidden="true">
+                      {getParticipantInitials(selectedConversation.participant?.name)}
+                    </span>
+                    <div>
+                      <div className="chat-thread-title-row">
+                        <h3>{selectedConversation.participant?.name}</h3>
+                        <span
+                          className={
+                            selectedConversation.participant?.onlineStatus?.isOnline
+                              ? "chat-status-dot online"
+                              : "chat-status-dot"
+                          }
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <p>{getParticipantLabel(selectedConversation, t)}</p>
+                      <small>{selectedStatusText}</small>
                     </div>
-                    <p>{getParticipantLabel(selectedConversation, t)}</p>
-                    <small>{selectedStatusText}</small>
                   </div>
 
                   <div className="chat-thread-security">
@@ -1400,31 +1657,64 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                       <div className="chat-panel-loading">
                         <div className="loading-dot" />
                       </div>
-                    ) : selectedMessages.length ? (
-                      selectedMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={
-                            message.isOwnMessage
-                              ? "chat-message-row own"
-                              : "chat-message-row"
-                          }
-                        >
-                          <article
+                    ) : renderedMessageItems.length ? (
+                      renderedMessageItems.map((item) =>
+                        item.type === "separator" ? (
+                          <div key={item.key} className="chat-day-separator">
+                            <span>{item.label}</span>
+                          </div>
+                        ) : (
+                          <div
+                            key={item.key}
                             className={
-                              message.isOwnMessage
-                                ? "chat-message-bubble own"
-                                : "chat-message-bubble"
+                              item.message.isOwnMessage
+                                ? "chat-message-row own"
+                                : "chat-message-row"
                             }
                           >
-                            {renderAttachment(message)}
-                            {message.body ? <p>{message.body}</p> : null}
-                            <footer>
-                              <span>{formatDateTime(message.createdAt)}</span>
-                            </footer>
-                          </article>
-                        </div>
-                      ))
+                            <article
+                              className={
+                                item.message.isOwnMessage
+                                  ? "chat-message-bubble own"
+                                  : "chat-message-bubble"
+                              }
+                            >
+                              {renderAttachment(item.message)}
+                              {item.message.body ? <p>{item.message.body}</p> : null}
+                              <footer>
+                                <span>
+                                  {formatMessageTime(item.message.createdAt, localeTag, t)}
+                                </span>
+                                {item.message.isOwnMessage ? (
+                                  <span
+                                    className={
+                                      item.message.readAt
+                                        ? "chat-message-status is-read"
+                                        : "chat-message-status"
+                                    }
+                                  >
+                                    {item.message.readAt ? (
+                                      <>
+                                        <FiCheck aria-hidden="true" />
+                                        <span>
+                                          {t("chat.readStatus")}{" "}
+                                          {formatMessageTime(
+                                            item.message.readAt,
+                                            localeTag,
+                                            t
+                                          )}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      t("chat.sentStatus")
+                                    )}
+                                  </span>
+                                ) : null}
+                              </footer>
+                            </article>
+                          </div>
+                        )
+                      )
                     ) : (
                       <EmptyState
                         icon={FiMessageSquare}
@@ -1433,13 +1723,41 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                       />
                     )}
                   </div>
+
+                  {showJumpToLatest ? (
+                    <button
+                      type="button"
+                      className="chat-jump-latest"
+                      onClick={handleJumpToLatest}
+                    >
+                      <FiArrowDown aria-hidden="true" />
+                      <span>
+                        {pendingLatestCount
+                          ? t("chat.newMessagesCount", {
+                              count: formatNumber(pendingLatestCount),
+                            })
+                          : t("chat.jumpToLatest")}
+                      </span>
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="chat-thread-footer">
                   <div className="chat-typing-row" aria-live="polite">
-                    {typingParticipant?.isTyping
-                      ? t("chat.typing", { name: typingParticipant.name })
-                      : t("chat.openConversation")}
+                    {typingParticipant?.isTyping ? (
+                      <span className="chat-typing-pill">
+                        <span className="chat-typing-dots" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                        <span>{t("chat.typing", { name: typingParticipant.name })}</span>
+                      </span>
+                    ) : (
+                      <span className="chat-typing-hint">
+                        {t("chat.openConversation")}
+                      </span>
+                    )}
                   </div>
 
                   <form className="chat-compose-form" onSubmit={handleSendMessage}>
@@ -1517,6 +1835,9 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                         onBlur={stopTyping}
                       />
                       <div className="chat-compose-meta">
+                        <span className="chat-compose-hint">
+                          {t("chat.sendShortcutHint")}
+                        </span>
                         <span className="chat-compose-count">{draft.length}/2000</span>
                       </div>
                     </div>
