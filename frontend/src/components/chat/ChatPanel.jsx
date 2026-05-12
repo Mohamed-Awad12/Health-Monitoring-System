@@ -114,6 +114,7 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const [typingState, setTypingState] = useState({});
   const remoteTypingTimeoutsRef = useRef({});
   const localTypingTimeoutRef = useRef(null);
+  const messageInputRef = useRef(null);
   const isTypingRef = useRef(false);
   const pendingReadRef = useRef(false);
 
@@ -588,6 +589,25 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     };
   }, []);
 
+  useEffect(() => {
+    const textarea = messageInputRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 220 ? "auto" : "hidden";
+  }, [draft, selectedConversationId]);
+
+  const handleDraftKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage(event).catch(() => {});
+    }
+  };
+
   const typingParticipant = typingState[selectedConversationId];
   const selectedStatusText = selectedConversation
     ? selectedConversation.participant?.onlineStatus?.isOnline
@@ -726,19 +746,27 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                       </div>
                     ) : selectedMessages.length ? (
                       selectedMessages.map((message) => (
-                        <article
+                        <div
                           key={message.id}
                           className={
                             message.isOwnMessage
-                              ? "chat-message-bubble own"
-                              : "chat-message-bubble"
+                              ? "chat-message-row own"
+                              : "chat-message-row"
                           }
                         >
-                          <p>{message.body}</p>
-                          <footer>
-                            <span>{formatDateTime(message.createdAt)}</span>
-                          </footer>
-                        </article>
+                          <article
+                            className={
+                              message.isOwnMessage
+                                ? "chat-message-bubble own"
+                                : "chat-message-bubble"
+                            }
+                          >
+                            <p>{message.body}</p>
+                            <footer>
+                              <span>{formatDateTime(message.createdAt)}</span>
+                            </footer>
+                          </article>
+                        </div>
                       ))
                     ) : (
                       <EmptyState
@@ -758,14 +786,21 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                   </div>
 
                   <form className="chat-compose-form" onSubmit={handleSendMessage}>
-                    <textarea
-                      value={draft}
-                      rows={3}
-                      maxLength={2000}
-                      placeholder={t("chat.messagePlaceholder")}
-                      onChange={handleDraftChange}
-                      onBlur={stopTyping}
-                    />
+                    <div className="chat-compose-input">
+                      <textarea
+                        ref={messageInputRef}
+                        value={draft}
+                        rows={1}
+                        maxLength={2000}
+                        placeholder={t("chat.messagePlaceholder")}
+                        onChange={handleDraftChange}
+                        onKeyDown={handleDraftKeyDown}
+                        onBlur={stopTyping}
+                      />
+                      <div className="chat-compose-meta">
+                        <span className="chat-compose-count">{draft.length}/2000</span>
+                      </div>
+                    </div>
                     <button
                       className="primary-button chat-send-button"
                       type="submit"
