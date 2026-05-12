@@ -575,15 +575,6 @@ export default function PatientDashboardPage() {
               <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
             )}
           </SectionCard>
-
-          <SectionCard
-            id="patient-chat"
-            title={t("chat.sectionTitle")}
-            className="history-section"
-          >
-            <p className="section-note">{t("chat.sectionDescription")}</p>
-            <ChatPanel preferredParticipantId={activeCareTeam[0]?.doctor?._id || ""} />
-          </SectionCard>
         </div>
 
         <aside className="dashboard-sidebar">
@@ -972,6 +963,15 @@ export default function PatientDashboardPage() {
           </SectionCard>
         </aside>
       </div>
+
+      <SectionCard
+        id="patient-chat"
+        title={t("chat.sectionTitle")}
+        className="history-section"
+      >
+        <p className="section-note">{t("chat.sectionDescription")}</p>
+        <ChatPanel preferredParticipantId={activeCareTeam[0]?.doctor?._id || ""} />
+      </SectionCard>
     </AppShell>
   );
 }

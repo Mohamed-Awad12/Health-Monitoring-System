@@ -590,17 +590,17 @@ export default function DoctorDashboardPage() {
               />
             )}
           </SectionCard>
-
-          <SectionCard
-            id="doctor-chat"
-            title={t("chat.sectionTitle")}
-            className="history-section"
-          >
-            <p className="section-note">{t("chat.sectionDescription")}</p>
-            <ChatPanel preferredParticipantId={selectedPatientId} />
-          </SectionCard>
         </div>
       </div>
+
+      <SectionCard
+        id="doctor-chat"
+        title={t("chat.sectionTitle")}
+        className="history-section"
+      >
+        <p className="section-note">{t("chat.sectionDescription")}</p>
+        <ChatPanel preferredParticipantId={selectedPatientId} />
+      </SectionCard>
     </AppShell>
   );
 }
