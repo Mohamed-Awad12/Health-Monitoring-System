@@ -10,6 +10,7 @@ import {
   updateDoctorAssignmentThresholds,
 } from "../api/doctorApi";
 import AppShell from "../components/layout/AppShell";
+import ChatPanel from "../components/chat/ChatPanel";
 import AlertList from "../components/ui/AlertList";
 import EmptyState from "../components/ui/EmptyState";
 import MetricCard from "../components/ui/MetricCard";
@@ -588,6 +589,15 @@ export default function DoctorDashboardPage() {
                 onSaveNote={handleSaveAlertNote}
               />
             )}
+          </SectionCard>
+
+          <SectionCard
+            id="doctor-chat"
+            title={t("chat.sectionTitle")}
+            className="history-section"
+          >
+            <p className="section-note">{t("chat.sectionDescription")}</p>
+            <ChatPanel preferredParticipantId={selectedPatientId} />
           </SectionCard>
         </div>
       </div>

@@ -15,6 +15,7 @@ const {
   registerSubscription,
   unregisterSubscription,
 } = require("../services/pushNotificationService");
+const { syncConversationForAssignment } = require("../services/chatService");
 const {
   doctorDirectoryTag,
   doctorScopeTag,
@@ -299,6 +300,7 @@ const assignDoctor = catchAsync(async (req, res) => {
   )
     .populate("doctor", "name email specialty")
     .lean();
+  await syncConversationForAssignment(relation);
 
   invalidatePatientCache(req.user._id, doctorId);
 
@@ -335,6 +337,7 @@ const unassignDoctor = catchAsync(async (req, res) => {
   }
 
   await relation.save();
+  await syncConversationForAssignment(relation);
   invalidatePatientCache(req.user._id, relation.doctor);
 
   setNoStoreHeaders(res);

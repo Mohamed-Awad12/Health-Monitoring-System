@@ -12,6 +12,7 @@ import {
   unassignDoctor,
 } from "../api/patientApi";
 import AppShell from "../components/layout/AppShell";
+import ChatPanel from "../components/chat/ChatPanel";
 import AlertList from "../components/ui/AlertList";
 import EmptyState from "../components/ui/EmptyState";
 import MetricCard from "../components/ui/MetricCard";
@@ -573,6 +574,15 @@ export default function PatientDashboardPage() {
             ) : (
               <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
             )}
+          </SectionCard>
+
+          <SectionCard
+            id="patient-chat"
+            title={t("chat.sectionTitle")}
+            className="history-section"
+          >
+            <p className="section-note">{t("chat.sectionDescription")}</p>
+            <ChatPanel preferredParticipantId={activeCareTeam[0]?.doctor?._id || ""} />
           </SectionCard>
         </div>
 

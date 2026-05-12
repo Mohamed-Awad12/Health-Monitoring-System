@@ -9,6 +9,7 @@ const {
   registerSubscription,
   unregisterSubscription,
 } = require("../services/pushNotificationService");
+const { syncConversationForAssignment } = require("../services/chatService");
 const responseCache = require("../services/responseCache");
 const ApiError = require("../utils/ApiError");
 const catchAsync = require("../utils/catchAsync");
@@ -330,6 +331,7 @@ const approveAssignment = catchAsync(async (req, res) => {
   relation.assignedAt = now;
   relation.endedAt = null;
   await relation.save();
+  await syncConversationForAssignment(relation);
   invalidateDoctorCache(req.user._id, relation.patient);
 
   await relation.populate("patient", "name email");
@@ -361,6 +363,7 @@ const denyAssignment = catchAsync(async (req, res) => {
   relation.assignedAt = null;
   relation.endedAt = null;
   await relation.save();
+  await syncConversationForAssignment(relation);
   invalidateDoctorCache(req.user._id, relation.patient);
 
   await relation.populate("patient", "name email");

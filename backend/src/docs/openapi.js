@@ -90,6 +90,68 @@ const pushSubscriptionSchema = {
   },
 };
 
+const chatParticipantSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    name: { type: "string" },
+    email: { type: "string", format: "email" },
+    role: { type: "string", enum: ["patient", "doctor"] },
+    specialty: { type: "string", nullable: true },
+    onlineStatus: {
+      type: "object",
+      properties: {
+        isOnline: { type: "boolean" },
+        onlineSince: { type: "string", format: "date-time", nullable: true },
+        lastSeenAt: { type: "string", format: "date-time", nullable: true },
+      },
+    },
+  },
+};
+
+const chatConversationSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    assignmentId: { type: "string" },
+    status: { type: "string", enum: ["active", "archived"] },
+    unreadCount: { type: "integer" },
+    lastReadAt: { type: "string", format: "date-time", nullable: true },
+    latestActivityAt: { type: "string", format: "date-time", nullable: true },
+    participant: chatParticipantSchema,
+    lastMessage: {
+      type: ["object", "null"],
+      properties: {
+        id: { type: "string" },
+        bodyPreview: { type: "string" },
+        senderId: { type: "string" },
+        senderRole: { type: "string", enum: ["patient", "doctor"] },
+        sentAt: { type: "string", format: "date-time" },
+        type: { type: "string", enum: ["text"] },
+      },
+    },
+  },
+};
+
+const chatMessageSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    conversationId: { type: "string" },
+    assignmentId: { type: "string" },
+    senderId: { type: "string" },
+    senderRole: { type: "string", enum: ["patient", "doctor"] },
+    recipientId: { type: "string" },
+    recipientRole: { type: "string", enum: ["patient", "doctor"] },
+    body: { type: "string" },
+    type: { type: "string", enum: ["text"] },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+    readAt: { type: "string", format: "date-time", nullable: true },
+    isOwnMessage: { type: "boolean" },
+  },
+};
+
 const openApiSpec = {
   openapi: "3.1.0",
   info: {
@@ -104,6 +166,7 @@ const openApiSpec = {
     { name: "Admin" },
     { name: "Patient" },
     { name: "Doctor" },
+    { name: "Chat" },
     { name: "Device" },
   ],
   components: {
@@ -115,6 +178,8 @@ const openApiSpec = {
     schemas: {
       User: userSchema,
       Alert: alertSchema,
+      ChatConversation: chatConversationSchema,
+      ChatMessage: chatMessageSchema,
       Session: sessionSchema,
       PushSubscription: pushSubscriptionSchema,
       Error: {
@@ -434,6 +499,99 @@ const openApiSpec = {
     },
     "/doctors/alerts/{alertId}/note": {
       patch: { tags: ["Doctor"], security: bearerAuth, parameters: [idParam("alertId")], requestBody: { content: { "application/json": { schema: { type: "object", properties: { note: { type: ["string", "null"], maxLength: 500 } } } } } }, responses: { 200: jsonResponse("Alert note saved") } },
+    },
+    "/chat/conversations": {
+      get: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        responses: {
+          200: jsonResponse("Chat conversations", {
+            type: "object",
+            properties: {
+              conversations: {
+                type: "array",
+                items: chatConversationSchema,
+              },
+            },
+          }),
+        },
+      },
+    },
+    "/chat/conversations/{conversationId}/messages": {
+      get: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        parameters: [
+          idParam("conversationId"),
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "before", in: "query", schema: { type: "string", format: "date-time" } },
+        ],
+        responses: {
+          200: jsonResponse("Chat messages", {
+            type: "object",
+            properties: {
+              conversation: chatConversationSchema,
+              messages: {
+                type: "array",
+                items: chatMessageSchema,
+              },
+              pagination: {
+                type: "object",
+                properties: {
+                  hasMore: { type: "boolean" },
+                  nextCursor: { type: "string", format: "date-time", nullable: true },
+                },
+              },
+            },
+          }),
+        },
+      },
+      post: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        parameters: [idParam("conversationId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["body"],
+                properties: {
+                  body: { type: "string", minLength: 1, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: jsonResponse("Chat message sent", {
+            type: "object",
+            properties: {
+              message: { type: "string" },
+              conversation: chatConversationSchema,
+              chatMessage: chatMessageSchema,
+            },
+          }),
+        },
+      },
+    },
+    "/chat/conversations/{conversationId}/read": {
+      post: {
+        tags: ["Chat"],
+        security: bearerAuth,
+        parameters: [idParam("conversationId")],
+        responses: {
+          200: jsonResponse("Conversation marked as read", {
+            type: "object",
+            properties: {
+              message: { type: "string" },
+              conversation: chatConversationSchema,
+              readAt: { type: "string", format: "date-time" },
+            },
+          }),
+        },
+      },
     },
     "/device/data": {
       post: {

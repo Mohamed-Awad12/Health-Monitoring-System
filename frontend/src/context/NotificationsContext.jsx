@@ -6,6 +6,28 @@ export const NotificationsContext = createContext(null);
 
 const MAX_NOTIFICATIONS = 50;
 
+const showBrowserNotification = (title, body) => {
+  if (
+    typeof window === "undefined" ||
+    typeof Notification === "undefined" ||
+    Notification.permission !== "granted" ||
+    document.visibilityState === "visible"
+  ) {
+    return;
+  }
+
+  try {
+    const notification = new Notification(title, {
+      body,
+      tag: `pulse-chat-${title}`,
+    });
+
+    window.setTimeout(() => notification.close(), 6000);
+  } catch {
+    // Ignore browser notification errors and preserve in-app notifications.
+  }
+};
+
 export function NotificationsProvider({ children }) {
   const { socket } = useSocket();
   const { t } = useUiPreferences();
@@ -48,12 +70,42 @@ export function NotificationsProvider({ children }) {
       });
     };
 
+    const handleChatMessage = (payload = {}) => {
+      const nextMessage = payload.message;
+      const nextConversation = payload.conversation;
+      const participantName =
+        nextConversation?.participant?.name || t("common.doctor");
+
+      if (!nextMessage?.id || nextMessage.isOwnMessage) {
+        return;
+      }
+
+      addNotification({
+        id: `chat:${nextMessage.id}`,
+        type: "chat",
+        message: t("notifications.chatMessage", {
+          name: participantName,
+          message: nextMessage.body,
+        }),
+        conversationId: nextConversation?.id,
+        createdAt: nextMessage.createdAt || new Date().toISOString(),
+        read: false,
+      });
+
+      showBrowserNotification(
+        participantName,
+        nextMessage.body || t("notifications.chatMessageFallback")
+      );
+    };
+
     socket.on("alert:new", handleAlert);
     socket.on("reading:new", handleReading);
+    socket.on("chat:message:new", handleChatMessage);
 
     return () => {
       socket.off("alert:new", handleAlert);
       socket.off("reading:new", handleReading);
+      socket.off("chat:message:new", handleChatMessage);
     };
   }, [socket, t]);
 

@@ -3,10 +3,12 @@
 Production-oriented full-stack health monitoring platform for IoT-enabled pulse oximeter devices. The system ingests secure device readings, stores time-series measurements in MongoDB, supports patient and doctor portals, and streams real-time updates over WebSockets.
 
 Website-specific documentation lives in [docs/website.md](docs/website.md).
+Chat architecture and API/socket documentation lives in [docs/chat-system.md](docs/chat-system.md).
 
 Recent enhancements:
 
 - Doctor assignment now uses a request workflow that doctors can approve or deny.
+- Secure real-time chat is available between active patient-doctor assignments.
 - Frontend supports English and Arabic with automatic `ltr`/`rtl` switching.
 - Light and dark themes are available from the UI.
 - Dashboards and auth screens have a refreshed visual design.
@@ -80,6 +82,10 @@ Recent enhancements:
 - `PATCH /api/patients/alerts/:alertId/acknowledge`
 - `GET /api/patients/reports`
 - `POST /api/patients/assistant/report`
+- `GET /api/chat/conversations`
+- `GET /api/chat/conversations/:conversationId/messages`
+- `POST /api/chat/conversations/:conversationId/messages`
+- `POST /api/chat/conversations/:conversationId/read`
 
 ### Doctor
 

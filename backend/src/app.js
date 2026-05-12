@@ -19,6 +19,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const deviceRoutes = require("./routes/deviceRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const patientRoutes = require("./routes/patientRoutes");
+const chatRoutes = require("./routes/chatRoutes");
 const openApiSpec = require("./docs/openapi");
 const metricsService = require("./services/metricsService");
 const { setCachingHeaders, setNoStoreHeaders } = require("./utils/httpCache");
@@ -218,6 +219,7 @@ if (env.NODE_ENV !== "production") {
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/device", deviceRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/doctors", doctorRoutes);
 
