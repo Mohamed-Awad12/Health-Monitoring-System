@@ -322,7 +322,12 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     .font("Helvetica-Bold")
     .fontSize(15)
     .text("Vital Summary", left, currentY);
-  currentY += 24;
+  document
+    .fillColor(COLORS.muted)
+    .font("Helvetica")
+    .fontSize(9.5)
+    .text("Key metrics for the selected reporting window.", left, currentY + 18);
+  currentY += 38;
 
   const metrics = [
     {
@@ -378,7 +383,12 @@ const drawOverviewPage = (document, { patient, period, summary, readings, genera
     .font("Helvetica-Bold")
     .fontSize(15)
     .text("Clinical Snapshot", left, currentY);
-  currentY += 24;
+  document
+    .fillColor(COLORS.muted)
+    .font("Helvetica")
+    .fontSize(9.5)
+    .text("Auto-generated highlights to make the export easier to scan.", left, currentY + 18);
+  currentY += 38;
 
   document.font("Helvetica").fontSize(10.5);
   const insightTextWidth = PAGE.width - 54;
@@ -441,8 +451,16 @@ const drawMeasurementsPageHeader = (document, patient, period) => {
       tableTop + 22,
       { width: PAGE.width }
     );
+  document
+    .fillColor(COLORS.muted)
+    .font("Helvetica")
+    .fontSize(9)
+    .text("Chronological order, newest reading last.", left, tableTop + 38, {
+      width: PAGE.width,
+      align: "right",
+    });
 
-  const headerY = tableTop + 48;
+  const headerY = tableTop + 58;
   document.roundedRect(left, headerY, PAGE.width, 26, 10).fill(COLORS.brandSoft);
   document
     .fillColor(COLORS.heading)
@@ -457,9 +475,9 @@ const drawMeasurementsPageHeader = (document, patient, period) => {
 };
 
 const drawStatusPill = (document, x, y, width, status) => {
-  document.roundedRect(x, y, width, 16, 8).fill(status.color);
+  document.roundedRect(x, y, width, 16, 8).fillAndStroke(status.background, status.color);
   document
-    .fillColor(COLORS.white)
+    .fillColor(status.color)
     .font("Helvetica-Bold")
     .fontSize(8)
     .text(status.label, x, y + 4, {
@@ -491,8 +509,12 @@ const drawMeasurementsTable = (document, { patient, period, readings }) => {
 
     const rowY = document.y;
     const status = getReadingStatus(reading);
+    const isFlagged = status.label !== "Stable";
 
-    if (index % 2 === 0) {
+    if (isFlagged) {
+      document.rect(left, rowY - 2, PAGE.width, rowHeight).fill(status.background);
+      document.rect(left, rowY - 2, 4, rowHeight).fill(status.color);
+    } else if (index % 2 === 0) {
       document.rect(left, rowY - 2, PAGE.width, rowHeight).fill(COLORS.rowAlt);
     }
 
@@ -531,7 +553,7 @@ const drawPageFooters = (document, patient) => {
     document.switchToPage(range.start + index);
 
     const left = document.page.margins.left;
-    const footerY = document.page.height - document.page.margins.bottom + 4;
+    const footerY = document.page.height - document.page.margins.bottom - 12;
 
     document
       .strokeColor(COLORS.border)
@@ -544,10 +566,12 @@ const drawPageFooters = (document, patient) => {
       .fontSize(8.5)
       .text(`Pulse Oximeter Report | ${patient.name || "Patient"}`, left, footerY, {
         width: 280,
+        lineBreak: false,
       })
       .text(`Page ${index + 1} of ${range.count}`, left + 360, footerY, {
         width: 143,
         align: "right",
+        lineBreak: false,
       });
   }
 }
