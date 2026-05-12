@@ -448,7 +448,7 @@ const downloadReport = catchAsync(async (req, res) => {
     const pdfBuffer = await buildPdfReport({
       patient,
       readings,
-      range,
+      period: { start, end, range },
       summary: summary.summary,
     });
 
