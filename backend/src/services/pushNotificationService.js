@@ -8,6 +8,11 @@ let vapidConfigured = false;
 const isPushConfigured = () =>
   Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_EMAIL);
 
+const getClientPushConfig = () => ({
+  supported: isPushConfigured(),
+  vapidPublicKey: isPushConfigured() ? env.VAPID_PUBLIC_KEY : "",
+});
+
 const getWebPush = () => {
   if (!isPushConfigured()) {
     return null;
@@ -120,6 +125,7 @@ const sendToUser = async (userId, payload) => {
 };
 
 module.exports = {
+  getClientPushConfig,
   registerSubscription,
   sendToUser,
   unregisterSubscription,

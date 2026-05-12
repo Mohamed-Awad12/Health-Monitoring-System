@@ -152,6 +152,25 @@ const openApiSpec = {
         responses: { 200: jsonResponse("CSRF token") },
       },
     },
+    "/auth/push-config": {
+      get: {
+        tags: ["Auth"],
+        responses: {
+          200: jsonResponse("Public push configuration", {
+            type: "object",
+            properties: {
+              push: {
+                type: "object",
+                properties: {
+                  supported: { type: "boolean" },
+                  vapidPublicKey: { type: "string" },
+                },
+              },
+            },
+          }),
+        },
+      },
+    },
     "/auth/register/patient": {
       post: {
         tags: ["Auth"],

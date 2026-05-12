@@ -33,6 +33,8 @@ export const verifyTwoFactor = (payload) =>
 
 export const getCsrfToken = () => api.get("/auth/csrf-token");
 
+export const getPushConfiguration = () => api.get("/auth/push-config");
+
 export const verifyEmailOtp = (payload) =>
   api.post("/auth/verify-email", payload);
 

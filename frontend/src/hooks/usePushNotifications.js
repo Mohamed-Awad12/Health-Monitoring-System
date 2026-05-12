@@ -1,11 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
+import { getPushConfiguration } from "../api/authApi";
 import api from "../api/axios";
 import { useAuth } from "./useAuth";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const EMPTY_PUSH_CONFIG = Object.freeze({
+  loaded: false,
+  supported: false,
+  vapidPublicKey: "",
+});
 
-const getVapidPublicKey = () =>
+const getEnvVapidPublicKey = () =>
   import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim() || "";
+
+const getFallbackPushConfig = () => {
+  const vapidPublicKey = getEnvVapidPublicKey();
+
+  return {
+    loaded: true,
+    supported: Boolean(vapidPublicKey),
+    vapidPublicKey,
+  };
+};
 
 const createPushError = (code, message) => {
   const error = new Error(message);
@@ -37,6 +53,18 @@ const urlBase64ToUint8Array = (base64String) => {
 const getRolePushPath = (role) =>
   role === "doctor" ? "/doctors/push/subscribe" : "/patients/push/subscribe";
 
+const canManagePushForUser = (user) =>
+  user?.role === "patient" ||
+  (user?.role === "doctor" && user?.doctorVerification?.status === "approved");
+
+const getServiceWorkerUrl = () => {
+  if (typeof window === "undefined") {
+    return "/sw.js";
+  }
+
+  return new URL("sw.js", window.location.origin + (import.meta.env.BASE_URL || "/")).toString();
+};
+
 const registerServiceWorker = async () => {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     throw createPushError(
@@ -52,7 +80,7 @@ const registerServiceWorker = async () => {
     );
   }
 
-  await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.register(getServiceWorkerUrl());
   return navigator.serviceWorker.ready;
 };
 
@@ -78,24 +106,100 @@ const ensureNotificationPermission = async () => {
   }
 };
 
+const mapPushSubscriptionError = (error) => {
+  if (error?.code || error?.response) {
+    return error;
+  }
+
+  const message = String(error?.message || "").trim();
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("push service error") ||
+    normalizedMessage.includes("registration failed")
+  ) {
+    return createPushError(
+      "PUSH_SERVICE_ERROR",
+      "Push registration failed. Verify the server VAPID configuration."
+    );
+  }
+
+  if (
+    normalizedMessage.includes("applicationserverkey") ||
+    normalizedMessage.includes("base64") ||
+    normalizedMessage.includes("invalid character")
+  ) {
+    return createPushError(
+      "PUSH_VAPID_KEY_INVALID",
+      "Push notifications are misconfigured. Verify the VAPID public key."
+    );
+  }
+
+  return createPushError(
+    "PUSH_SUBSCRIBE_FAILED",
+    message || "Failed to subscribe to push notifications."
+  );
+};
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const [registration, setRegistration] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pushConfig, setPushConfig] = useState(EMPTY_PUSH_CONFIG);
+  const canManagePush = canManagePushForUser(user);
   const isSupported = useMemo(
     () =>
       typeof window !== "undefined" &&
       "serviceWorker" in navigator &&
       "PushManager" in window &&
       isSecurePushContext() &&
-      Boolean(getVapidPublicKey()) &&
-      ["patient", "doctor"].includes(user?.role),
-    [user?.role]
+      pushConfig.loaded &&
+      pushConfig.supported &&
+      Boolean(pushConfig.vapidPublicKey) &&
+      canManagePush,
+    [canManagePush, pushConfig]
   );
 
   useEffect(() => {
+    if (!canManagePush) {
+      setPushConfig({
+        loaded: true,
+        supported: false,
+        vapidPublicKey: "",
+      });
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    getPushConfiguration()
+      .then(({ data }) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setPushConfig({
+          loaded: true,
+          supported: Boolean(data?.push?.supported),
+          vapidPublicKey: String(data?.push?.vapidPublicKey || "").trim(),
+        });
+      })
+      .catch(() => {
+        if (isMounted) {
+          setPushConfig(getFallbackPushConfig());
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [canManagePush]);
+
+  useEffect(() => {
     if (!isSupported) {
+      setRegistration(null);
+      setSubscription(null);
       return undefined;
     }
 
@@ -124,10 +228,7 @@ export function usePushNotifications() {
 
   const subscribe = async () => {
     if (!isSupported) {
-      throw createPushError(
-        "PUSH_UNSUPPORTED",
-        "Push notifications are not available in this browser."
-      );
+      throw createPushError("PUSH_UNSUPPORTED", "Push notifications are not available here.");
     }
 
     setLoading(true);
@@ -142,13 +243,15 @@ export function usePushNotifications() {
         existingSubscription ||
         (await nextRegistration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(getVapidPublicKey()),
+          applicationServerKey: urlBase64ToUint8Array(pushConfig.vapidPublicKey),
         }));
 
       await api.post(getRolePushPath(user.role), nextSubscription.toJSON());
       setRegistration(nextRegistration);
       setSubscription(nextSubscription);
       return nextSubscription;
+    } catch (error) {
+      throw mapPushSubscriptionError(error);
     } finally {
       setLoading(false);
     }

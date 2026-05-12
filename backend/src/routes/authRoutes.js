@@ -96,6 +96,7 @@ router.post(
   requireCaptcha,
   authController.resendVerificationEmail
 );
+router.get("/push-config", authController.getPushConfiguration);
 router
   .route("/me")
   .get(authenticate, authController.getCurrentUser)

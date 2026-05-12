@@ -8,11 +8,12 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "Pulse";
+  const iconUrl = new URL("favicon.svg", self.registration.scope).toString();
   const options = {
     body: payload.body || payload.message || "",
     data: payload,
-    icon: "/favicon.svg",
-    badge: "/favicon.svg",
+    icon: iconUrl,
+    badge: iconUrl,
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -20,5 +21,5 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow("/"));
+  event.waitUntil(clients.openWindow(self.registration.scope));
 });

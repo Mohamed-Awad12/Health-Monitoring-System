@@ -2,6 +2,7 @@ const env = require("../config/env");
 const { ROLES } = require("../constants/roles");
 const User = require("../models/User");
 const { adminUsersTag, doctorDirectoryTag } = require("../services/cacheTags");
+const { getClientPushConfig } = require("../services/pushNotificationService");
 const responseCache = require("../services/responseCache");
 const {
   hashValue,
@@ -455,6 +456,13 @@ const getCurrentUser = catchAsync(async (req, res) => {
   });
 });
 
+const getPushConfiguration = catchAsync(async (_req, res) => {
+  setNoStoreHeaders(res);
+  res.json({
+    push: getClientPushConfig(),
+  });
+});
+
 const updateCurrentUser = catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).select(
     "+emailVerificationTokenHash +emailVerificationExpiresAt +refreshToken +refreshTokenExpiresAt"
@@ -717,6 +725,7 @@ module.exports = {
   verifyTwoFactor,
   verifyEmail,
   resendVerificationEmail,
+  getPushConfiguration,
   getCurrentUser,
   updateCurrentUser,
   updateCurrentUserTwoFactor,
