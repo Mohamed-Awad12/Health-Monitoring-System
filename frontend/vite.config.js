@@ -14,6 +14,11 @@ const allowedHosts = Array.from(
   ])
 );
 
+const securityHeaders = {
+  "Content-Security-Policy": "frame-ancestors 'none'",
+  "X-Frame-Options": "DENY",
+};
+
 export default defineConfig({
   plugins: [react()],
   base: process.env.VITE_CDN_BASE_URL?.trim() || "/",
@@ -21,11 +26,13 @@ export default defineConfig({
     host: true,
     port: 5173,
     allowedHosts,
+    headers: securityHeaders,
   },
   preview: {
     host: true,
     port: Number(process.env.PORT) || 4173,
     allowedHosts,
+    headers: securityHeaders,
   },
   build: {
     manifest: true,

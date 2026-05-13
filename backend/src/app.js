@@ -106,6 +106,7 @@ app.use(
   helmet({
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    xFrameOptions: { action: "deny" },
     referrerPolicy: { policy: "no-referrer" },
     hsts: env.ENFORCE_HTTPS
       ? {
