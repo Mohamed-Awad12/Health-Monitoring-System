@@ -1,5 +1,6 @@
 const { getIO } = require("../config/socket");
 const catchAsync = require("../utils/catchAsync");
+const ApiError = require("../utils/ApiError");
 const { setNoStoreHeaders } = require("../utils/httpCache");
 const {
   listConversationsForUser,
@@ -10,6 +11,26 @@ const {
   sendAttachmentMessage,
   markConversationRead,
 } = require("../services/chatService");
+
+const fetchRemoteAttachment = async (fileUrl) => {
+  const response = await fetch(fileUrl);
+
+  if (!response.ok) {
+    if (response.status === 404 || response.status === 410) {
+      throw new ApiError(404, "Attachment file is unavailable");
+    }
+
+    throw new ApiError(502, "Failed to retrieve attachment");
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  return {
+    buffer,
+    contentLength: response.headers.get("content-length"),
+    contentType: response.headers.get("content-type"),
+  };
+};
 
 const emitConversationUpdate = async (conversationId, user) => {
   const io = getIO();
@@ -129,9 +150,23 @@ const streamAttachment = catchAsync(async (req, res) => {
     "Content-Disposition",
     `${dispositionType}; filename*=UTF-8''${safeFileName}`
   );
-  
+
   if (payload.filePath.startsWith("http")) {
-    return res.redirect(payload.filePath);
+    const remoteFile = await fetchRemoteAttachment(payload.filePath);
+
+    res.type(
+      payload.attachment.mimeType ||
+        remoteFile.contentType ||
+        "application/octet-stream"
+    );
+
+    if (remoteFile.contentLength) {
+      res.setHeader("Content-Length", remoteFile.contentLength);
+    } else if (payload.attachment.sizeBytes) {
+      res.setHeader("Content-Length", String(payload.attachment.sizeBytes));
+    }
+
+    return res.send(remoteFile.buffer);
   }
 
   res.type(payload.attachment.mimeType || "application/octet-stream");
