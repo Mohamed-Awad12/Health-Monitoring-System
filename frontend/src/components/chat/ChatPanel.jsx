@@ -1491,7 +1491,16 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
         response.data,
         attachment.originalName || attachment.extension || "attachment"
       );
-    } catch {
+    } catch (error) {
+      if (error?.response?.status === 404 || error?.response?.status === 410) {
+        missingAttachmentPaths.add(attachment.urlPath);
+        addToast({
+          type: "error",
+          message: t("chat.attachmentUnavailable"),
+        });
+        return;
+      }
+
       addToast({
         type: "error",
         message: t("chat.downloadFailed"),

@@ -8,6 +8,7 @@ const ApiError = require("../utils/ApiError");
 const { getPresence } = require("./presenceService");
 
 const ACTIVE_RELATION_STATUS = "active";
+const fallbackChatAttachmentsDir = path.join(__dirname, "../../uploads/chat-attachments");
 
 const buildConversationPreview = (body = "") => {
   const normalized = String(body || "").replace(/\s+/g, " ").trim();
@@ -106,11 +107,33 @@ const serializeConversation = (conversation, currentUserRole, participant) => {
   };
 };
 
-const resolveAttachmentFilePath = (storedName = "") =>
-  storedName ? path.join(chatAttachmentsDir, storedName) : "";
+const hasStoredAttachment = (attachment = null) =>
+  Boolean(String(attachment?.storedName || "").trim());
 
-const isStoredAttachmentAvailable = (attachment = null) => {
-  const filePath = resolveAttachmentFilePath(attachment?.storedName);
+const hasRemoteAttachment = (attachment = null) =>
+  Boolean(String(attachment?.cloudinaryUrl || "").trim());
+
+const hasAttachmentSource = (attachment = null) =>
+  hasStoredAttachment(attachment) || hasRemoteAttachment(attachment);
+
+const resolveAttachmentFilePath = (storedName = "") => {
+  if (!storedName) {
+    return "";
+  }
+
+  return path.join(chatAttachmentsDir || fallbackChatAttachmentsDir, storedName);
+};
+
+const isAttachmentAvailable = (attachment = null) => {
+  if (hasRemoteAttachment(attachment)) {
+    return true;
+  }
+
+  if (!hasStoredAttachment(attachment)) {
+    return false;
+  }
+
+  const filePath = resolveAttachmentFilePath(attachment.storedName);
 
   return Boolean(filePath) && fs.existsSync(filePath);
 };
@@ -118,14 +141,14 @@ const isStoredAttachmentAvailable = (attachment = null) => {
 const serializeAttachment = (message) => {
   const attachment = message.attachment;
 
-  if (!attachment?.storedName) {
+  if (!hasAttachmentSource(attachment)) {
     return null;
   }
 
   const conversationId = message.conversation.toString();
   const messageId = message._id.toString();
   const urlPath = `/chat/conversations/${conversationId}/messages/${messageId}/attachment`;
-  const isAvailable = isStoredAttachmentAvailable(attachment);
+  const isAvailable = isAttachmentAvailable(attachment);
 
   return {
     originalName: attachment.originalName || "",
@@ -156,12 +179,12 @@ const serializeMessage = (message, currentUserId) => ({
 });
 
 const createStoredAttachmentPayload = (file) => ({
-  storedName: file.filename, // public_id from cloudinary
-  originalName: file.originalname || file.filename,
+  storedName: file.filename || "",
+  originalName: file.originalname || file.filename || "attachment",
   mimeType: file.mimetype || "application/octet-stream",
   sizeBytes: file.size || 0,
   extension: path.extname(file.originalname || "").toLowerCase(),
-  cloudinaryUrl: file.path, // added to track cloudinary url directly
+  cloudinaryUrl: file.path || "",
 });
 
 const getConversationQueryForUser = (conversationId, user) =>
@@ -348,7 +371,7 @@ const createConversationMessage = async (
     throw new ApiError(400, "Message is required");
   }
 
-  if (type !== "text" && !attachment?.storedName) {
+  if (type !== "text" && !hasAttachmentSource(attachment)) {
     throw new ApiError(400, "Attachment is required");
   }
 
@@ -504,22 +527,27 @@ const getMessageAttachmentForUser = async (conversationId, messageId, user) => {
   const { conversation, relation } = await getConversationForUser(conversationId, user);
   ensureConversationIsActive(conversation);
   assertActiveAssignment(relation);
-  
+
   const message = await ChatMessage.findOne({ _id: messageId, conversation: conversation._id }).lean();
-  
-  if (!message?.attachment?.storedName && !message?.attachment?.cloudinaryUrl) {
+
+  if (!hasAttachmentSource(message?.attachment)) {
     throw new ApiError(404, "Attachment not found");
   }
-  
-  // If we have a Cloudinary URL, use that directly
-  let filePath = message.attachment.cloudinaryUrl || "";
-  
-  // Fallback to old format local disk if no cloudinaryUrl but has storedName
-  if (!filePath && message.attachment.storedName) {
-     filePath = resolveAttachmentFilePath(message.attachment.storedName);
-     if (!fs.existsSync(filePath)) {
-       throw new ApiError(404, "Attachment file is unavailable");
-     }
+
+  let filePath = hasRemoteAttachment(message.attachment)
+    ? message.attachment.cloudinaryUrl.trim()
+    : "";
+
+  if (!filePath && hasStoredAttachment(message.attachment)) {
+    filePath = resolveAttachmentFilePath(message.attachment.storedName);
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new ApiError(404, "Attachment file is unavailable");
+    }
+  }
+
+  if (!filePath) {
+    throw new ApiError(404, "Attachment file is unavailable");
   }
 
   return {
