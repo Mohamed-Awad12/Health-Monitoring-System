@@ -22,6 +22,8 @@ import {
   FiMessageSquare,
   FiMic,
   FiPaperclip,
+  FiPlay,
+  FiPause,
   FiSearch,
   FiSend,
   FiSquare,
@@ -416,6 +418,53 @@ function SecureChatImage({ attachmentPath, alt, fallbackText, onDownload }) {
 
 function SecureChatAudio({ attachmentPath, title, fallbackText, onDownload }) {
   const { blobUrl: audioUrl, failed } = useSecureAttachmentBlob(attachmentPath);
+  const audioRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+  };
+
+  const handeLoadedMetadata = () => {
+    if (audioRef.current && isFinite(audioRef.current.duration)) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    if (audioRef.current) audioRef.current.currentTime = 0;
+  };
+
+  const handleSeek = (e) => {
+    if (audioRef.current && duration > 0) {
+      const bounds = e.currentTarget.getBoundingClientRect();
+      const percent = (e.clientX - bounds.left) / bounds.width;
+      audioRef.current.currentTime = percent * duration;
+      setCurrentTime(percent * duration);
+    }
+  };
+
+  const formatAudioTime = (timeInSeconds) => {
+    if (!timeInSeconds || isNaN(timeInSeconds)) return "0:00";
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
 
   if (failed) {
     return (
@@ -438,9 +487,50 @@ function SecureChatAudio({ attachmentPath, title, fallbackText, onDownload }) {
     return <div className="chat-attachment chat-attachment-audio chat-attachment-audio-loading" />;
   }
 
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className="chat-attachment chat-attachment-audio">
-      <audio controls preload="metadata" src={audioUrl} />
+    <div className="chat-attachment chat-attachment-audio" style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1rem', background: 'color-mix(in srgb, var(--surface) 90%, transparent)', border: '1px solid var(--line)', borderRadius: '1.25rem', width: '220px', position: 'relative', overflow: 'hidden' }}>
+      <audio 
+        ref={audioRef} 
+        src={audioUrl} 
+        preload="metadata" 
+        onTimeUpdate={handleTimeUpdate} 
+        onLoadedMetadata={handeLoadedMetadata} 
+        onEnded={handleEnded} 
+        style={{ display: 'none' }} 
+      />
+      
+      <button 
+        type="button" 
+        onClick={togglePlay} 
+        style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: 'none', cursor: 'pointer', transition: 'transform 0.2s ease', transform: isPlaying ? 'scale(0.95)' : 'scale(1)' }}
+      >
+        {isPlaying ? <FiPause size={18} /> : <FiPlay size={18} style={{ marginLeft: '2px' }} />}
+      </button>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+          <span>{formatAudioTime(currentTime)}</span>
+          <span style={{ cursor: 'pointer' }} onClick={onDownload} title={title}>
+            <FiDownload size={14} />
+          </span>
+        </div>
+        
+        <div 
+          onClick={handleSeek} 
+          style={{ width: '100%', height: '24px', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+        >
+          <div style={{ width: '100%', height: '4px', backgroundColor: 'var(--line-strong)', borderRadius: '2px', position: 'absolute' }}></div>
+          <div style={{ width: `${progressPercent}%`, height: '4px', backgroundColor: 'var(--primary)', borderRadius: '2px', position: 'absolute', transition: 'width 0.1s linear' }}></div>
+          {/* Decorative waveform effect inside progress */}
+          <div style={{ position: 'absolute', width: '100%', display: 'flex', gap: '2px', opacity: 0.3, pointerEvents: 'none' }}>
+             {[...Array(24)].map((_, i) => (
+                <div key={i} style={{ flex: 1, height: `${Math.max(4, Math.random() * 16)}px`, backgroundColor: i / 24 * 100 < progressPercent ? 'var(--primary)' : 'var(--text-muted)', borderRadius: '1px', transition: 'background-color 0.2s' }}></div>
+             ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
