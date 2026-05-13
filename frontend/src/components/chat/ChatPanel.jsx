@@ -1822,42 +1822,53 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
                             <FiPaperclip aria-hidden="true" />
                             <span>{t("chat.attachFile")}</span>
                           </button>
-                          <button
-                            type="button"
-                            className={
-                              isRecording
-                                ? "ghost-button chat-compose-action is-recording"
-                                : "ghost-button chat-compose-action"
-                            }
-                            disabled={sending}
-                            onClick={() =>
-                              isRecording
-                                ? stopVoiceRecording()
-                                : startVoiceRecording().catch(() => {})
-                            }
-                          >
-                            {isRecording ? (
-                              <FiSquare aria-hidden="true" />
-                            ) : (
+                          {isRecording ? (
+                            <>
+                              <button
+                                type="button"
+                                className="ghost-button chat-compose-action is-recording stop-recording"
+                                onClick={() => stopVoiceRecording()}
+                              >
+                                <FiSquare aria-hidden="true" />
+                                <span>{t("chat.stopRecording")}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost-button chat-compose-action is-recording cancel-recording"
+                                onClick={() => stopVoiceRecording(true)}
+                              >
+                                <FiX aria-hidden="true" />
+                                <span>{t("common.cancel")}</span>
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="ghost-button chat-compose-action"
+                              disabled={sending}
+                              onClick={() => startVoiceRecording().catch(() => {})}
+                            >
                               <FiMic aria-hidden="true" />
-                            )}
-                            <span>
-                              {isRecording
-                                ? `${t("chat.stopRecording")} ${formatRecordingDuration(
-                                    recordingDurationSeconds
-                                  )}`
-                                : t("chat.recordVoice")}
-                            </span>
-                          </button>
+                              <span>{t("chat.recordVoice")}</span>
+                            </button>
+                          )}
                         </div>
 
                         <div className="chat-compose-status">
                           {isRecording ? (
-                            <span className="chat-recording-badge">
-                              {t("chat.recordingInProgress", {
-                                duration: formatRecordingDuration(recordingDurationSeconds),
-                              })}
-                            </span>
+                            <div className="chat-recording-indicator row">
+                              <span className="chat-recording-dot blinking" aria-hidden="true" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'red', display: 'inline-block', marginRight: '8px', animation: 'blink 1s infinite' }}></span>
+                              <span className="chat-recording-time">
+                                {formatRecordingDuration(recordingDurationSeconds)}
+                              </span>
+                              <div className="chat-recording-waveform" style={{ display: 'inline-flex', marginLeft: '12px', gap: '3px', alignItems: 'center' }}>
+                                <span style={{ width: '3px', height: '12px', backgroundColor: '#4a90e2', animation: 'pulse 1s infinite' }}></span>
+                                <span style={{ width: '3px', height: '18px', backgroundColor: '#4a90e2', animation: 'pulse 1.2s infinite' }}></span>
+                                <span style={{ width: '3px', height: '10px', backgroundColor: '#4a90e2', animation: 'pulse 0.8s infinite' }}></span>
+                                <span style={{ width: '3px', height: '16px', backgroundColor: '#4a90e2', animation: 'pulse 1.1s infinite' }}></span>
+                                <span style={{ width: '3px', height: '14px', backgroundColor: '#4a90e2', animation: 'pulse 0.9s infinite' }}></span>
+                              </div>
+                            </div>
                           ) : null}
                         </div>
                       </div>
