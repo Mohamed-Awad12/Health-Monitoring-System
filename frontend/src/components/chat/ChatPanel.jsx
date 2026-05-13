@@ -471,6 +471,7 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   const pendingAttachmentRef = useRef(null);
   const isTypingRef = useRef(false);
   const pendingReadRef = useRef(false);
+  const pendingPreferredParticipantIdRef = useRef(preferredParticipantId || "");
 
   const selectedConversation = useMemo(
     () =>
@@ -591,31 +592,40 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
   }, [t]);
 
   useEffect(() => {
+    pendingPreferredParticipantIdRef.current = preferredParticipantId || "";
+  }, [preferredParticipantId]);
+
+  useEffect(() => {
     if (!conversations.length) {
       setSelectedConversationId("");
       return;
     }
 
-    if (preferredParticipantId) {
-      const preferredConversation = conversations.find(
-        (conversation) => conversation.participant?.id === preferredParticipantId
-      );
+    setSelectedConversationId((currentConversationId) => {
+      const pendingPreferredParticipantId = pendingPreferredParticipantIdRef.current;
+      const pendingPreferredConversation = pendingPreferredParticipantId
+        ? conversations.find(
+            (conversation) => conversation.participant?.id === pendingPreferredParticipantId
+          )
+        : null;
 
-      if (preferredConversation) {
-        setSelectedConversationId((currentConversationId) =>
-          currentConversationId === preferredConversation.id
-            ? currentConversationId
-            : preferredConversation.id
-        );
-        return;
+      if (pendingPreferredConversation) {
+        pendingPreferredParticipantIdRef.current = "";
+        return pendingPreferredConversation.id;
       }
-    }
 
-    setSelectedConversationId((currentConversationId) =>
-      conversations.some((conversation) => conversation.id === currentConversationId)
-        ? currentConversationId
-        : conversations[0]?.id || ""
-    );
+      if (conversations.some((conversation) => conversation.id === currentConversationId)) {
+        return currentConversationId;
+      }
+
+      const preferredConversation = preferredParticipantId
+        ? conversations.find(
+            (conversation) => conversation.participant?.id === preferredParticipantId
+          )
+        : null;
+
+      return preferredConversation?.id || conversations[0]?.id || "";
+    });
   }, [conversations, preferredParticipantId]);
 
   const updateConversationReadState = (conversationId, readAt, recipientId = user?._id) => {

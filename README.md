@@ -83,8 +83,10 @@ Recent enhancements:
 - `GET /api/patients/reports`
 - `POST /api/patients/assistant/report`
 - `GET /api/chat/conversations`
-- `GET /api/chat/conversations/:conversationId/messages`
+- `GET /api/chat/conversations/:conversationId/messages?limit=&before=`
 - `POST /api/chat/conversations/:conversationId/messages`
+- `POST /api/chat/conversations/:conversationId/messages/attachment`
+- `GET /api/chat/conversations/:conversationId/messages/:messageId/attachment?download=`
 - `POST /api/chat/conversations/:conversationId/read`
 
 ### Doctor

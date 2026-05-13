@@ -1084,7 +1084,7 @@ void initSensor() {
   while (millis() - t0 < 500 && validSamples < 10) {
     sensor.check();
     if (sensor.available()) { ambientIR += sensor.getIR(); sensor.nextSample(); validSamples++; }
-    delay(10);
+    delay(20);
   }
   if (validSamples > 0) {
     ambientIR /= validSamples;

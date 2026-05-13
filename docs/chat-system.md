@@ -106,11 +106,108 @@ frontend/src
 
 ## REST API
 
-### `GET /api/chat/conversations`
+All chat REST endpoints are rooted at `/api/chat`.
 
-Returns all active conversations available to the authenticated patient or doctor.
+### Access rules
 
-Response shape:
+- Authentication is required for every chat endpoint.
+- Only users with the `patient` role or an approved `doctor` role can access chat routes.
+- The authenticated user must belong to the target conversation.
+- The underlying `DoctorPatient` assignment must still be `active`.
+- Write endpoints are protected by the authenticated write rate limiter and the existing CSRF middleware.
+
+### Common headers
+
+For write endpoints, send the existing CSRF header used elsewhere in the app together with the authenticated session cookie or bearer token.
+
+Examples:
+
+```http
+Cookie: pulse_session=<token>
+x-csrf-token: <csrf-token>
+```
+
+### Shared response objects
+
+#### `ConversationSummary`
+
+```json
+{
+  "id": "665...",
+  "assignmentId": "665...",
+  "status": "active",
+  "unreadCount": 2,
+  "lastReadAt": "2026-05-12T10:20:00.000Z",
+  "latestActivityAt": "2026-05-12T10:24:13.000Z",
+  "participant": {
+    "id": "665...",
+    "name": "Dr. Samir Ali",
+    "email": "samir@example.com",
+    "role": "doctor",
+    "specialty": "Pulmonology",
+    "onlineStatus": {
+      "isOnline": true,
+      "onlineSince": "2026-05-12T10:10:00.000Z",
+      "lastSeenAt": null
+    }
+  },
+  "lastMessage": {
+    "id": "665...",
+    "bodyPreview": "Please keep your device connected tonight.",
+    "senderId": "665...",
+    "senderRole": "doctor",
+    "sentAt": "2026-05-12T10:24:13.000Z",
+    "type": "text"
+  }
+}
+```
+
+#### `ChatMessage`
+
+```json
+{
+  "id": "665...",
+  "conversationId": "665...",
+  "assignmentId": "665...",
+  "senderId": "665...",
+  "senderRole": "patient",
+  "recipientId": "665...",
+  "recipientRole": "doctor",
+  "body": "Hello doctor, my oxygen level dropped this morning.",
+  "type": "text",
+  "attachment": null,
+  "createdAt": "2026-05-12T10:24:13.000Z",
+  "updatedAt": "2026-05-12T10:24:13.000Z",
+  "readAt": null,
+  "isOwnMessage": true
+}
+```
+
+#### `AttachmentMetadata`
+
+```json
+{
+  "originalName": "oxygen-report.pdf",
+  "mimeType": "application/pdf",
+  "sizeBytes": 182441,
+  "extension": ".pdf",
+  "urlPath": "/chat/conversations/665.../messages/665.../attachment",
+  "downloadUrlPath": "/chat/conversations/665.../messages/665.../attachment?download=1"
+}
+```
+
+### Endpoint reference
+
+#### `GET /api/chat/conversations`
+
+Returns every active chat conversation available to the authenticated patient or doctor.
+
+Request:
+
+- Query parameters: none
+- Body: none
+
+Success response: `200 OK`
 
 ```json
 {
@@ -147,13 +244,107 @@ Response shape:
 }
 ```
 
-### `GET /api/chat/conversations/:conversationId/messages?limit=30&before=<ISO_DATE>`
+Notes:
+
+- The list is sorted by `latestActivityAt` descending.
+- Conversations are created or re-activated automatically from active doctor-patient assignments.
+- `unreadCount` and `lastReadAt` are always from the perspective of the current authenticated user.
+
+#### `GET /api/chat/conversations/:conversationId/messages`
 
 Returns paginated message history for one active conversation.
 
-### `POST /api/chat/conversations/:conversationId/messages`
+Path parameters:
 
-Body:
+- `conversationId`: MongoDB ObjectId of the chat conversation
+
+Query parameters:
+
+- `limit`: optional integer, default `30`, minimum `1`, maximum `100`
+- `before`: optional ISO 8601 datetime with timezone offset; returns messages older than this timestamp
+
+Example request:
+
+```http
+GET /api/chat/conversations/665.../messages?limit=30&before=2026-05-12T10:24:13.000Z
+```
+
+Success response: `200 OK`
+
+```json
+{
+  "conversation": {
+    "id": "665...",
+    "assignmentId": "665...",
+    "status": "active",
+    "unreadCount": 0,
+    "lastReadAt": "2026-05-12T10:27:00.000Z",
+    "latestActivityAt": "2026-05-12T10:24:13.000Z",
+    "participant": {
+      "id": "665...",
+      "name": "Dr. Samir Ali",
+      "email": "samir@example.com",
+      "role": "doctor",
+      "specialty": "Pulmonology",
+      "onlineStatus": {
+        "isOnline": true,
+        "onlineSince": "2026-05-12T10:10:00.000Z",
+        "lastSeenAt": null
+      }
+    },
+    "lastMessage": {
+      "id": "665...",
+      "bodyPreview": "Please keep your device connected tonight.",
+      "senderId": "665...",
+      "senderRole": "doctor",
+      "sentAt": "2026-05-12T10:24:13.000Z",
+      "type": "text"
+    }
+  },
+  "messages": [
+    {
+      "id": "665...",
+      "conversationId": "665...",
+      "assignmentId": "665...",
+      "senderId": "665...",
+      "senderRole": "doctor",
+      "recipientId": "665...",
+      "recipientRole": "patient",
+      "body": "Please keep your device connected tonight.",
+      "type": "text",
+      "attachment": null,
+      "createdAt": "2026-05-12T10:24:13.000Z",
+      "updatedAt": "2026-05-12T10:24:13.000Z",
+      "readAt": "2026-05-12T10:27:00.000Z",
+      "isOwnMessage": false
+    }
+  ],
+  "pagination": {
+    "hasMore": false,
+    "nextCursor": null
+  }
+}
+```
+
+Notes:
+
+- Messages are returned in ascending chronological order inside `messages`.
+- Use `pagination.nextCursor` as the next `before` value when loading older pages.
+
+#### `POST /api/chat/conversations/:conversationId/messages`
+
+Creates a text message in the target conversation.
+
+Path parameters:
+
+- `conversationId`: MongoDB ObjectId of the chat conversation
+
+Request headers:
+
+- `Content-Type: application/json`
+- CSRF header required
+
+Request body:
 
 ```json
 {
@@ -161,9 +352,262 @@ Body:
 }
 ```
 
-### `POST /api/chat/conversations/:conversationId/read`
+Validation rules:
 
-Marks the conversation as read for the authenticated user and clears the unread counter for that side.
+- `body` is required
+- `body` must be between `1` and `2000` characters after normalization
+- line endings and repeated blank lines are normalized server-side
+- HTML-like markup using `<` or `>` is rejected
+
+Success response: `201 Created`
+
+```json
+{
+  "message": "Chat message sent",
+  "conversation": {
+    "id": "665...",
+    "assignmentId": "665...",
+    "status": "active",
+    "unreadCount": 0,
+    "lastReadAt": "2026-05-12T10:24:13.000Z",
+    "latestActivityAt": "2026-05-12T10:24:13.000Z",
+    "participant": {
+      "id": "665...",
+      "name": "Dr. Samir Ali",
+      "email": "samir@example.com",
+      "role": "doctor",
+      "specialty": "Pulmonology",
+      "onlineStatus": {
+        "isOnline": true,
+        "onlineSince": "2026-05-12T10:10:00.000Z",
+        "lastSeenAt": null
+      }
+    },
+    "lastMessage": {
+      "id": "665...",
+      "bodyPreview": "Hello doctor, my oxygen level dropped this morning.",
+      "senderId": "665...",
+      "senderRole": "patient",
+      "sentAt": "2026-05-12T10:24:13.000Z",
+      "type": "text"
+    }
+  },
+  "chatMessage": {
+    "id": "665...",
+    "conversationId": "665...",
+    "assignmentId": "665...",
+    "senderId": "665...",
+    "senderRole": "patient",
+    "recipientId": "665...",
+    "recipientRole": "doctor",
+    "body": "Hello doctor, my oxygen level dropped this morning.",
+    "type": "text",
+    "attachment": null,
+    "createdAt": "2026-05-12T10:24:13.000Z",
+    "updatedAt": "2026-05-12T10:24:13.000Z",
+    "readAt": null,
+    "isOwnMessage": true
+  }
+}
+```
+
+#### `POST /api/chat/conversations/:conversationId/messages/attachment`
+
+Creates an attachment message with an optional text caption.
+
+Path parameters:
+
+- `conversationId`: MongoDB ObjectId of the chat conversation
+
+Request headers:
+
+- `Content-Type: multipart/form-data`
+- CSRF header required
+
+Form fields:
+
+- `attachment`: required file field
+- `body`: optional caption string, up to `2000` characters after normalization
+
+Attachment rules:
+
+- Maximum size: `5 MB`
+- Allowed MIME types:
+  - images: `image/gif`, `image/jpeg`, `image/png`, `image/webp`
+  - audio: `audio/aac`, `audio/m4a`, `audio/mp4`, `audio/mpeg`, `audio/ogg`, `audio/wav`, `audio/wave`, `audio/webm`, `audio/x-m4a`, `audio/x-wav`
+  - documents: `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+  - spreadsheets: `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - other supported files: `application/zip`, `text/csv`, `text/plain`
+
+Success response: `201 Created`
+
+```json
+{
+  "message": "Chat attachment sent",
+  "conversation": {
+    "id": "665...",
+    "assignmentId": "665...",
+    "status": "active",
+    "unreadCount": 0,
+    "lastReadAt": "2026-05-12T10:30:15.000Z",
+    "latestActivityAt": "2026-05-12T10:30:15.000Z",
+    "participant": {
+      "id": "665...",
+      "name": "Dr. Samir Ali",
+      "email": "samir@example.com",
+      "role": "doctor",
+      "specialty": "Pulmonology",
+      "onlineStatus": {
+        "isOnline": true,
+        "onlineSince": "2026-05-12T10:10:00.000Z",
+        "lastSeenAt": null
+      }
+    },
+    "lastMessage": {
+      "id": "665...",
+      "bodyPreview": "Image: pulse-reading.png",
+      "senderId": "665...",
+      "senderRole": "patient",
+      "sentAt": "2026-05-12T10:30:15.000Z",
+      "type": "image"
+    }
+  },
+  "chatMessage": {
+    "id": "665...",
+    "conversationId": "665...",
+    "assignmentId": "665...",
+    "senderId": "665...",
+    "senderRole": "patient",
+    "recipientId": "665...",
+    "recipientRole": "doctor",
+    "body": "",
+    "type": "image",
+    "attachment": {
+      "originalName": "pulse-reading.png",
+      "mimeType": "image/png",
+      "sizeBytes": 182441,
+      "extension": ".png",
+      "urlPath": "/chat/conversations/665.../messages/665.../attachment",
+      "downloadUrlPath": "/chat/conversations/665.../messages/665.../attachment?download=1"
+    },
+    "createdAt": "2026-05-12T10:30:15.000Z",
+    "updatedAt": "2026-05-12T10:30:15.000Z",
+    "readAt": null,
+    "isOwnMessage": true
+  }
+}
+```
+
+Notes:
+
+- The server derives `type` from the uploaded file MIME type.
+- Resulting message types are `image`, `audio`, or `file`.
+
+#### `GET /api/chat/conversations/:conversationId/messages/:messageId/attachment`
+
+Streams the stored attachment file for a message that belongs to the authenticated user.
+
+Path parameters:
+
+- `conversationId`: MongoDB ObjectId of the chat conversation
+- `messageId`: MongoDB ObjectId of the message containing the attachment
+
+Query parameters:
+
+- `download`: optional boolean; accepts `1`, `true`, `yes`, or `on`
+
+Behavior:
+
+- Returns the raw binary file body
+- Uses `Content-Disposition: inline` by default for images and audio
+- Uses `Content-Disposition: attachment` for generic files, or whenever `download=1`
+- Sets `Content-Type` from the stored attachment MIME type
+- Sets `Content-Length` when the stored file size is available
+
+Example request:
+
+```http
+GET /api/chat/conversations/665.../messages/665.../attachment?download=1
+```
+
+Success response: `200 OK`
+
+- Response body is the attachment stream, not JSON.
+
+#### `POST /api/chat/conversations/:conversationId/read`
+
+Marks every unread message in the conversation as read for the authenticated user and clears that side's unread counter.
+
+Path parameters:
+
+- `conversationId`: MongoDB ObjectId of the chat conversation
+
+Request:
+
+- Body: none
+- CSRF header required
+
+Success response: `200 OK`
+
+```json
+{
+  "message": "Conversation marked as read",
+  "conversation": {
+    "id": "665...",
+    "assignmentId": "665...",
+    "status": "active",
+    "unreadCount": 0,
+    "lastReadAt": "2026-05-12T10:27:00.000Z",
+    "latestActivityAt": "2026-05-12T10:24:13.000Z",
+    "participant": {
+      "id": "665...",
+      "name": "Dr. Samir Ali",
+      "email": "samir@example.com",
+      "role": "doctor",
+      "specialty": "Pulmonology",
+      "onlineStatus": {
+        "isOnline": true,
+        "onlineSince": "2026-05-12T10:10:00.000Z",
+        "lastSeenAt": null
+      }
+    },
+    "lastMessage": {
+      "id": "665...",
+      "bodyPreview": "Please keep your device connected tonight.",
+      "senderId": "665...",
+      "senderRole": "doctor",
+      "sentAt": "2026-05-12T10:24:13.000Z",
+      "type": "text"
+    }
+  },
+  "readAt": "2026-05-12T10:27:00.000Z"
+}
+```
+
+Notes:
+
+- The backend also emits `chat:conversation:updated` and `chat:conversation:read` socket events after a successful read mark.
+
+### Common error cases
+
+Typical non-success responses include:
+
+- `400 Bad Request`
+  - invalid `conversationId` or `messageId`
+  - invalid `limit` or malformed `before` datetime
+  - empty or oversize text body
+  - message body containing HTML-like markup
+  - missing attachment file
+  - unsupported attachment MIME type
+- `401 Unauthorized`
+  - missing or invalid authentication
+- `403 Forbidden`
+  - doctor account is not approved
+  - conversation does not belong to the current user
+  - conversation is archived or its doctor-patient assignment is no longer active
+- `404 Not Found`
+  - conversation does not exist
+  - attachment does not exist or the stored file is unavailable
 
 ## Socket Events
 
