@@ -55,6 +55,11 @@ const chatMessageSchema = new mongoose.Schema(
         trim: true,
         default: "",
       },
+      cloudinaryUrl: {
+        type: String,
+        trim: true,
+        default: "",
+      },
       originalName: {
         type: String,
         trim: true,

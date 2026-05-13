@@ -1,50 +1,16 @@
-const fs = require("fs");
-const path = require("path");
 const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
 const ApiError = require("../utils/ApiError");
+const env = require("../config/env");
 
-const uploadRoot = path.resolve(__dirname, "../../uploads");
-const doctorVerificationDir = path.join(uploadRoot, "doctor-verifications");
-const chatAttachmentsDir = path.join(uploadRoot, "chat-attachments");
-
-const ensureUploadDirectory = (targetDir) => {
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-};
-
-const sanitizeFileBaseName = (fileName) =>
-  fileName
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/_+/g, "_")
-    .slice(0, 80);
-
-const doctorVerificationStorage = multer.diskStorage({
-  destination: (_req, _file, callback) => {
-    ensureUploadDirectory(doctorVerificationDir);
-    callback(null, doctorVerificationDir);
-  },
-  filename: (_req, file, callback) => {
-    const extension = path.extname(file.originalname || "").toLowerCase();
-    const baseName = sanitizeFileBaseName(path.basename(file.originalname, extension) || "doc");
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    callback(null, `${baseName}-${uniqueSuffix}${extension}`);
-  },
-});
-
-const chatAttachmentStorage = multer.diskStorage({
-  destination: (_req, _file, callback) => {
-    ensureUploadDirectory(chatAttachmentsDir);
-    callback(null, chatAttachmentsDir);
-  },
-  filename: (_req, file, callback) => {
-    const extension = path.extname(file.originalname || "").toLowerCase();
-    const baseName = sanitizeFileBaseName(path.basename(file.originalname, extension) || "chat");
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    callback(null, `${baseName}-${uniqueSuffix}${extension}`);
-  },
-});
+if (env.CLOUDINARY_CLOUD_NAME) {
+  cloudinary.config({
+    cloud_name: env.CLOUDINARY_CLOUD_NAME,
+    api_key: env.CLOUDINARY_API_KEY,
+    api_secret: env.CLOUDINARY_API_SECRET,
+  });
+}
 
 const allowedDocumentMimeTypes = new Set([
   "application/pdf",
@@ -78,6 +44,43 @@ const allowedChatAttachmentMimeTypes = new Set([
   "text/plain",
 ]);
 
+const getResourceType = (mimetype) => {
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("audio/") || mimetype.startsWith("video/")) return "video";
+  return "raw";
+};
+
+const doctorVerificationStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    return {
+      folder: "doctor-verifications",
+      resource_type: "raw", 
+      format: file.originalname.split('.').pop().toLowerCase()
+    };
+  },
+});
+
+const chatAttachmentStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    const isImage = file.mimetype.startsWith("image/");
+    const isAudio = file.mimetype.startsWith("audio/") || file.mimetype.startsWith("video/");
+    const resource_type = isAudio ? "video" : (isImage ? "image" : "raw");
+
+    const params = {
+      folder: "chat-attachments",
+      resource_type: resource_type,
+    };
+    
+    if (resource_type === "raw" || resource_type === "video") {
+      params.format = file.originalname.split('.').pop().toLowerCase() || "webm";
+    }
+
+    return params;
+  },
+});
+
 const doctorVerificationUpload = multer({
   storage: doctorVerificationStorage,
   limits: {
@@ -93,7 +96,6 @@ const doctorVerificationUpload = multer({
       );
       return;
     }
-
     callback(null, true);
   },
 });
@@ -113,14 +115,13 @@ const chatAttachmentUpload = multer({
       );
       return;
     }
-
     callback(null, true);
   },
 });
 
 module.exports = {
   doctorVerificationUpload,
-  doctorVerificationDir,
+  doctorVerificationDir: "",
   chatAttachmentUpload,
-  chatAttachmentsDir,
+  chatAttachmentsDir: "",
 };

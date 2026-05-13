@@ -129,6 +129,11 @@ const streamAttachment = catchAsync(async (req, res) => {
     "Content-Disposition",
     `${dispositionType}; filename*=UTF-8''${safeFileName}`
   );
+  
+  if (payload.filePath.startsWith("http")) {
+    return res.redirect(payload.filePath);
+  }
+
   res.type(payload.attachment.mimeType || "application/octet-stream");
 
   if (payload.attachment.sizeBytes) {

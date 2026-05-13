@@ -77,6 +77,9 @@ const envSchema = z
     VAPID_PUBLIC_KEY: z.string().trim().optional().or(z.literal("")),
     VAPID_PRIVATE_KEY: z.string().trim().optional().or(z.literal("")),
     VAPID_EMAIL: z.string().trim().optional().or(z.literal("")),
+    CLOUDINARY_CLOUD_NAME: z.string().trim().optional().or(z.literal("")),
+    CLOUDINARY_API_KEY: z.string().trim().optional().or(z.literal("")),
+    CLOUDINARY_API_SECRET: z.string().trim().optional().or(z.literal("")),
     ADMIN_BOOTSTRAP_TOKEN: z
       .string()
       .trim()

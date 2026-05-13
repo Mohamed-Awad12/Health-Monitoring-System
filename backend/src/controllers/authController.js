@@ -141,6 +141,7 @@ const register = (role) =>
         ? {
             status: "pending",
             documentFileName: req.file.filename,
+            documentUrl: req.file.path,
             documentOriginalName: req.file.originalname,
             documentMimeType: req.file.mimetype,
             documentSize: req.file.size,

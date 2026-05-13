@@ -156,11 +156,12 @@ const serializeMessage = (message, currentUserId) => ({
 });
 
 const createStoredAttachmentPayload = (file) => ({
-  storedName: file.filename,
+  storedName: file.filename, // public_id from cloudinary
   originalName: file.originalname || file.filename,
   mimeType: file.mimetype || "application/octet-stream",
   sizeBytes: file.size || 0,
   extension: path.extname(file.originalname || "").toLowerCase(),
+  cloudinaryUrl: file.path, // added to track cloudinary url directly
 });
 
 const getConversationQueryForUser = (conversationId, user) =>
@@ -501,23 +502,24 @@ const sendAttachmentMessage = async (conversationId, user, { body = "", file } =
 
 const getMessageAttachmentForUser = async (conversationId, messageId, user) => {
   const { conversation, relation } = await getConversationForUser(conversationId, user);
-
   ensureConversationIsActive(conversation);
   assertActiveAssignment(relation);
-
-  const message = await ChatMessage.findOne({
-    _id: messageId,
-    conversation: conversation._id,
-  }).lean();
-
-  if (!message?.attachment?.storedName) {
+  
+  const message = await ChatMessage.findOne({ _id: messageId, conversation: conversation._id }).lean();
+  
+  if (!message?.attachment?.storedName && !message?.attachment?.cloudinaryUrl) {
     throw new ApiError(404, "Attachment not found");
   }
-
-  const filePath = resolveAttachmentFilePath(message.attachment.storedName);
-
-  if (!isStoredAttachmentAvailable(message.attachment)) {
-    throw new ApiError(404, "Attachment file is unavailable");
+  
+  // If we have a Cloudinary URL, use that directly
+  let filePath = message.attachment.cloudinaryUrl || "";
+  
+  // Fallback to old format local disk if no cloudinaryUrl but has storedName
+  if (!filePath && message.attachment.storedName) {
+     filePath = resolveAttachmentFilePath(message.attachment.storedName);
+     if (!fs.existsSync(filePath)) {
+       throw new ApiError(404, "Attachment file is unavailable");
+     }
   }
 
   return {
