@@ -6,7 +6,7 @@ const {
 } = require("./emailService");
 
 const buildOtp = () =>
-  crypto.randomInt(0, 1000000).toString().padStart(6, "0");
+  crypto.randomInt(1, 1000000).toString().padStart(6, "0");
 
 const hashValue = (value) =>
   crypto.createHash("sha256").update(String(value)).digest("hex");
