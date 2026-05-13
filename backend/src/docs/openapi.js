@@ -152,6 +152,7 @@ const chatMessageSchema = {
         mimeType: { type: "string" },
         sizeBytes: { type: "integer" },
         extension: { type: "string" },
+        isAvailable: { type: "boolean" },
         urlPath: { type: "string" },
         downloadUrlPath: { type: "string" },
       },

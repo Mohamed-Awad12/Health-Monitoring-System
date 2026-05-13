@@ -28,6 +28,8 @@ import {
   FiX,
 } from "react-icons/fi";
 
+const missingAttachmentPaths = new Set();
+
 const ensureArray = (value) => (Array.isArray(value) ? value : []);
 
 const sortConversations = (items) =>
@@ -326,6 +328,12 @@ function useSecureAttachmentBlob(attachmentPath) {
         return;
       }
 
+      if (missingAttachmentPaths.has(attachmentPath)) {
+        setImageUrl("");
+        setFailed(true);
+        return;
+      }
+
       setFailed(false);
 
       try {
@@ -341,7 +349,11 @@ function useSecureAttachmentBlob(attachmentPath) {
 
         revokedUrl = nextImageUrl;
         setImageUrl(nextImageUrl);
-      } catch {
+      } catch (error) {
+        if (error?.response?.status === 404 || error?.response?.status === 410) {
+          missingAttachmentPaths.add(attachmentPath);
+        }
+
         if (!cancelled) {
           setFailed(true);
           setImageUrl("");
@@ -1369,6 +1381,17 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
       return;
     }
 
+    if (
+      attachment.isAvailable === false ||
+      missingAttachmentPaths.has(attachment.urlPath)
+    ) {
+      addToast({
+        type: "error",
+        message: t("chat.attachmentUnavailable"),
+      });
+      return;
+    }
+
     try {
       const response = await api.get(attachment.downloadUrlPath || attachment.urlPath, {
         responseType: "blob",
@@ -1386,11 +1409,28 @@ export default function ChatPanel({ preferredParticipantId = "" }) {
     }
   };
 
+  const renderUnavailableAttachment = (attachment) => (
+    <div className="chat-attachment chat-attachment-file" role="status">
+      <FiFileText aria-hidden="true" />
+      <div>
+        <strong>{attachment?.originalName || t("chat.fileAttachment")}</strong>
+        <span>{t("chat.attachmentUnavailable")}</span>
+      </div>
+    </div>
+  );
+
   const renderAttachment = (message) => {
     const attachment = message.attachment;
 
     if (!attachment?.urlPath) {
       return null;
+    }
+
+    if (
+      attachment.isAvailable === false ||
+      missingAttachmentPaths.has(attachment.urlPath)
+    ) {
+      return renderUnavailableAttachment(attachment);
     }
 
     if (message.type === "image") {

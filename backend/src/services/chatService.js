@@ -106,6 +106,15 @@ const serializeConversation = (conversation, currentUserRole, participant) => {
   };
 };
 
+const resolveAttachmentFilePath = (storedName = "") =>
+  storedName ? path.join(chatAttachmentsDir, storedName) : "";
+
+const isStoredAttachmentAvailable = (attachment = null) => {
+  const filePath = resolveAttachmentFilePath(attachment?.storedName);
+
+  return Boolean(filePath) && fs.existsSync(filePath);
+};
+
 const serializeAttachment = (message) => {
   const attachment = message.attachment;
 
@@ -116,12 +125,14 @@ const serializeAttachment = (message) => {
   const conversationId = message.conversation.toString();
   const messageId = message._id.toString();
   const urlPath = `/chat/conversations/${conversationId}/messages/${messageId}/attachment`;
+  const isAvailable = isStoredAttachmentAvailable(attachment);
 
   return {
     originalName: attachment.originalName || "",
     mimeType: attachment.mimeType || "application/octet-stream",
     sizeBytes: attachment.sizeBytes || 0,
     extension: attachment.extension || "",
+    isAvailable,
     urlPath,
     downloadUrlPath: `${urlPath}?download=1`,
   };
@@ -503,9 +514,9 @@ const getMessageAttachmentForUser = async (conversationId, messageId, user) => {
     throw new ApiError(404, "Attachment not found");
   }
 
-  const filePath = path.join(chatAttachmentsDir, message.attachment.storedName);
+  const filePath = resolveAttachmentFilePath(message.attachment.storedName);
 
-  if (!fs.existsSync(filePath)) {
+  if (!isStoredAttachmentAvailable(message.attachment)) {
     throw new ApiError(404, "Attachment file is unavailable");
   }
 

@@ -191,6 +191,7 @@ x-csrf-token: <csrf-token>
   "mimeType": "application/pdf",
   "sizeBytes": 182441,
   "extension": ".pdf",
+  "isAvailable": true,
   "urlPath": "/chat/conversations/665.../messages/665.../attachment",
   "downloadUrlPath": "/chat/conversations/665.../messages/665.../attachment?download=1"
 }
